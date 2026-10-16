@@ -80,7 +80,7 @@ def find_free_port(start):
                 continue
     return None
 
-APP_VERSION = '1.5.6'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
+APP_VERSION = '1.5.7'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
 # 1.2.0 — поле «Примечание» во всех приказах + загрузка сотрудников и видов приказов из Excel
 # 1.2.1 — куратору разрешено редактирование справочника «Виды приказов»
 # 1.2.2 — панель загрузки приказов в журналы из Excel + подробное описание обновления программы
@@ -112,6 +112,13 @@ APP_VERSION = '1.5.6'  # 1.5.0 — клиентское приложение; 1.
 #         приказа + (причина) при её наличии; справочник «Причины» на вкладке
 #         «Справочники» с выбором вида приказа; клиентское приложение — причина
 #         во всех журналах
+# 1.5.7 — в справочнике «Причины» данные могут повторяться (следствие выгрузок
+#         из Excel): добавлена колонка active — неактивные повторы скрыты из
+#         списков журналов, API и счётчиков; миграция помечает существующие
+#         дубликаты (активной остаётся запись с наибольшим числом приказов);
+#         импорт причин идемпотентен (повторы пропускаются), реактивация
+#         hidden-дубликата вместо создания нового; на вкладке «Справочники →
+#         Причины» — счётчик повторов и переключатель «Показать повторы»
 
 
 def setup_logging():
@@ -255,13 +262,23 @@ def _get_or_create_reason(conn, name, journal=None):
         return None
     journal = journal if journal in JOURNAL_TYPES else None
     if journal:
-        row = conn.execute('SELECT id FROM reasons WHERE LOWER(TRIM(name))=? AND journal=?',
-                           (name.lower(), journal)).fetchone()
+        # среди повторов (данные в справочнике могут повторяться, v1.5.7)
+        # выбираем активную запись, затем — используемую в приказах
+        row = conn.execute(
+            'SELECT r.id FROM reasons r '
+            'LEFT JOIN orders o ON o.reason_id=r.id '
+            'WHERE LOWER(TRIM(r.name))=? AND r.journal=? '
+            'ORDER BY r.active DESC, COUNT(o.id) DESC, r.id ASC LIMIT 1',
+            (name.lower(), journal)).fetchone()
         if row:
             return row['id']
     else:
-        row = conn.execute('SELECT id FROM reasons WHERE LOWER(TRIM(name))=?',
-                           (name.lower(),)).fetchone()
+        row = conn.execute(
+            'SELECT r.id FROM reasons r '
+            'LEFT JOIN orders o ON o.reason_id=r.id '
+            'WHERE LOWER(TRIM(r.name))=? '
+            'ORDER BY r.active DESC, COUNT(o.id) DESC, r.id ASC LIMIT 1',
+            (name.lower(),)).fetchone()
         if row:
             return row['id']
     try:
@@ -613,7 +630,9 @@ CREATE TABLE IF NOT EXISTS order_types (
 CREATE TABLE IF NOT EXISTS reasons (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,              -- справочник «Причины» (заполняется при импорте из Excel)
-    journal TEXT                     -- вид приказа, к которому относится причина (v1.5.6)
+    journal TEXT,                    -- вид приказа, к которому относится причина (v1.5.6)
+    active INTEGER NOT NULL DEFAULT 1 -- признак актуальности записи (v1.5.7):
+                                     -- дубликаты выгруженных причин помечаются 0
 );
 CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -676,6 +695,28 @@ def init_db():
     if 'journal' not in rcols:
         conn.execute('ALTER TABLE reasons ADD COLUMN journal TEXT')
         conn.execute("UPDATE reasons SET journal='opeka' WHERE journal IS NULL")
+    # Миграция v1.5.7: в справочнике «Причины» данные могут повторяться —
+    # причины, попавшие в БД выгрузками из Excel (без ручного ввода), хранятся
+    # дублями. Колонка active помечает актуальные записи; при миграции среди
+    # существующих повторов оставляем активным одну запись (с наибольшим
+    # числом связанных приказов), остальные помечаем неактивными (active=0).
+    if 'active' not in rcols:
+        conn.execute('ALTER TABLE reasons ADD COLUMN active INTEGER NOT NULL DEFAULT 1')
+        dup_groups = conn.execute(
+            "SELECT LOWER(TRIM(name)) nm, COALESCE(journal,'opeka') j, COUNT(*) c "
+            'FROM reasons GROUP BY nm, j HAVING c > 1').fetchall()
+        for g in dup_groups:
+            keep = conn.execute(
+                'SELECT r.id FROM reasons r '
+                'LEFT JOIN orders o ON o.reason_id=r.id '
+                "WHERE LOWER(TRIM(r.name))=? AND COALESCE(r.journal,'opeka')=? "
+                'GROUP BY r.id ORDER BY COUNT(o.id) DESC, r.id ASC LIMIT 1',
+                (g['nm'], g['j'])).fetchone()
+            conn.execute(
+                'UPDATE reasons SET active=0 WHERE id IN ('
+                'SELECT r.id FROM reasons r '
+                "WHERE LOWER(TRIM(r.name))=? AND COALESCE(r.journal,'opeka')=? "
+                'AND r.id<>?)', (g['nm'], g['j'], keep['id']))
     # seed roles
     for r in ALL_ROLES:
         conn.execute('INSERT OR IGNORE INTO roles(name) VALUES (?)', (r,))
@@ -998,14 +1039,22 @@ def references():
     # причины разделены по видам приказов (v1.5.6); счётчик использования — общий
     reasons_rows = conn.execute(
         'SELECT r.id, r.name, COALESCE(r.journal, \'opeka\') AS journal, '
-        'COUNT(o.id) used '
+        'r.active, COUNT(o.id) used '
         'FROM reasons r LEFT JOIN orders o ON o.reason_id=r.id '
         'GROUP BY r.id ORDER BY r.journal, r.name').fetchall()
+    # дубликаты выгруженных причин (v1.5.7): в справочнике данные могут
+    # повторяться — показываем актуальные записи; неактивные повторы скрыты
+    rs_dupes = sum(1 for r in reasons_rows if not r['active'])
+    if request.args.get('show_dupes'):
+        show_rs = list(reasons_rows)
+    else:
+        show_rs = [r for r in reasons_rows if r['active']]
     conn.close()
     return render_template(
         'references.html', tab=tab,
         order_types_rows=ot_rows, order_types_n=len(ot_rows),
-        reasons_rows=reasons_rows, reasons_n=len(reasons_rows),
+        reasons_rows=show_rs, reasons_n=len(show_rs),
+        reasons_total=len(reasons_rows), reasons_dupes=rs_dupes,
         all_journals=[(j, JOURNAL_TITLES[j]) for j in JOURNAL_TYPES],
         journal_titles=JOURNAL_TITLES,
         can_edit_ot=can_edit_order_types(user),
@@ -1395,19 +1444,26 @@ def reason_save():
     conn = get_db()
     try:
         if rid:
-            conn.execute('UPDATE reasons SET name=?, journal=? WHERE id=?',
+            conn.execute('UPDATE reasons SET name=?, journal=?, active=1 WHERE id=?',
                          (name, journal, rid))
         else:
+            # данные в справочнике могут повторяться (v1.5.7): если причина с
+            # таким наименованием уже есть среди неактивных повторов — запись
+            # реактивируется вместо создания нового дубликата
             dup = conn.execute(
-                'SELECT 1 FROM reasons WHERE LOWER(TRIM(name))=? '
+                'SELECT id, active FROM reasons WHERE LOWER(TRIM(name))=? '
                 "AND COALESCE(journal,'opeka')=?",
                 (name.lower(), journal or 'opeka')).fetchone()
-            if dup:
+            if dup and dup['active']:
                 conn.close()
                 flash('Такая причина для этого вида приказа уже существует', 'err')
                 return redirect(url_for('references', tab='reasons') + '#rs-list')
-            conn.execute('INSERT INTO reasons(name, journal) VALUES (?,?)',
-                         (name, journal))
+            if dup:
+                conn.execute('UPDATE reasons SET active=1, journal=? WHERE id=?',
+                             (journal, dup['id']))
+            else:
+                conn.execute('INSERT INTO reasons(name, journal) VALUES (?,?)',
+                             (name, journal))
         conn.commit()
         audit('ПРИЧИНА СОХРАНЕНА',
               f'{JOURNAL_TITLES.get(journal, "общая")}: {name}')
@@ -1513,8 +1569,13 @@ def reasons_import():
         if ci_kind is not None and ci_kind < len(row) and row[ci_kind]:
             journal = _journal_key(row[ci_kind], title_to_key)
         journal = journal if journal in JOURNAL_TYPES else 'opeka'
+        # в справочнике «Причины» данные могут повторяться (v1.5.7): строки
+        # Excel, совпадающие с уже имеющимися причинами своего вида, не
+        # создают новых записей — импорт идемпотентен даже при дублях в БД
         old = conn.execute(
-            'SELECT id FROM reasons WHERE LOWER(TRIM(name))=? AND COALESCE(journal,\'opeka\')=?',
+            "SELECT r.id FROM reasons r LEFT JOIN orders o ON o.reason_id=r.id "
+            "WHERE LOWER(TRIM(r.name))=? AND COALESCE(r.journal,'opeka')=? "
+            'ORDER BY r.active DESC, COUNT(o.id) DESC, r.id ASC LIMIT 1',
             (name.lower(), journal)).fetchone()
         if old:
             skipped += 1
@@ -1525,7 +1586,7 @@ def reasons_import():
     conn.close()
     audit('ИМПОРТ ПРИЧИН ИЗ EXCEL',
           f'файл={f.filename}, создано={created}, пропущено={skipped}')
-    msg = f'Импорт завершён: создано — {created}, пропущено (дубликаты) — {skipped}'
+    msg = f'Импорт завершён: создано — {created}, пропущено (повторы) — {skipped}'
     flash(msg, 'ok')
     return _redirect_back('reasons', back_to_service=True)
 
@@ -1659,9 +1720,11 @@ def journal_list(journal):
     types = conn.execute('SELECT * FROM order_types WHERE kind=? ORDER BY name',
                          (journal,)).fetchall()
     # справочник «Причины»: причины разделены по видам приказов (v1.5.6) —
-    # в выпадающем списке журнала показываются причины своего вида + общие
+    # в выпадающем списке журнала показываются причины своего вида + общие;
+    # неактивные повторы выгруженных причин скрыты (v1.5.7)
     reasons = conn.execute(
-        'SELECT * FROM reasons WHERE COALESCE(journal, ?)=? ORDER BY name',
+        'SELECT * FROM reasons WHERE COALESCE(journal, ?)=? AND active=1 '
+        'ORDER BY name',
         (journal, journal)).fetchall()
     today = date.today().isoformat()
     conn.close()
@@ -2311,9 +2374,11 @@ def _report_period():
 
 
 def _journal_reasons(conn, journal):
-    """Справочник «Причины» для журнала: причины своего вида + общие (v1.5.6)."""
+    """Справочник «Причины» для журнала: актуальные причины своего вида +
+    общие (v1.5.6); неактивные повторы выгруженных причин скрыты (v1.5.7)."""
     return conn.execute(
-        'SELECT * FROM reasons WHERE COALESCE(journal, ?)=? ORDER BY name',
+        'SELECT * FROM reasons WHERE COALESCE(journal, ?)=? AND active=1 '
+        'ORDER BY name',
         (journal, journal)).fetchall()
 
 
@@ -2582,12 +2647,15 @@ def api_order_types():
     if request.args.get('reasons'):
         conn = get_db()
         jrn = request.args.get('journal')
+        # неактивные повторы выгруженных причин из списка скрыты (v1.5.7)
         if jrn in JOURNAL_TYPES:
             rows = conn.execute(
-                'SELECT * FROM reasons WHERE COALESCE(journal, ?)=? ORDER BY name',
+                'SELECT * FROM reasons WHERE COALESCE(journal, ?)=? AND active=1 '
+                'ORDER BY name',
                 (jrn, jrn)).fetchall()
         else:
-            rows = conn.execute('SELECT * FROM reasons ORDER BY name').fetchall()
+            rows = conn.execute(
+                'SELECT * FROM reasons WHERE active=1 ORDER BY name').fetchall()
         conn.close()
         return api_json([{'id': r['id'], 'name': r['name'],
                           'journal': r['journal'] if 'journal' in r.keys() else None}
@@ -2619,6 +2687,9 @@ def api_reasons():
         data = request.get_json(silent=True) or {}
         name = _norm(data.get('name') or '').strip()
         rid = data.get('id')
+        journal = _norm(data.get('journal') or '')
+        if journal not in JOURNAL_TYPES:
+            journal = None
         if not name:
             return api_json({'error': 'Укажите наименование причины'}, 400)
         conn = get_db()
@@ -2633,38 +2704,50 @@ def api_reasons():
                 if dup:
                     conn.close()
                     return api_json({'error': 'Такая причина уже существует'}, 400)
-                conn.execute('UPDATE reasons SET name=? WHERE id=?', (name, int(rid)))
+                conn.execute('UPDATE reasons SET name=?, journal=?, active=1 WHERE id=?',
+                             (name, journal, int(rid)))
                 action = 'ПРИЧИНА ИЗМЕНЕНА (API)'
             else:
-                # UNIQUE по name — регистронезависимая проверка дубликата
+                # данные в справочнике могут повторяться (v1.5.7): поиск
+                # существующей причины — в рамках своего вида приказа; среди
+                # повторов выбираем активную запись
                 existed = conn.execute(
-                    'SELECT id FROM reasons WHERE LOWER(TRIM(name))=?',
-                    (name.lower(),)).fetchone()
-                if existed:
+                    'SELECT r.id, r.active FROM reasons r '
+                    'LEFT JOIN orders o ON o.reason_id=r.id '
+                    'WHERE LOWER(TRIM(r.name))=? AND COALESCE(r.journal, ?)=? '
+                    'ORDER BY r.active DESC, COUNT(o.id) DESC, r.id ASC LIMIT 1',
+                    (name.lower(), journal or 'opeka',
+                     journal or 'opeka')).fetchone()
+                if existed and existed['active']:
                     conn.close()
                     return api_json({'id': existed['id'], 'exists': True})
-                try:
-                    cur = conn.execute('INSERT INTO reasons(name) VALUES (?)', (name,))
-                except sqlite3.IntegrityError:      # гонка параллельных вставок
-                    existed = conn.execute(
-                        'SELECT id FROM reasons WHERE LOWER(TRIM(name))=?',
-                        (name.lower(),)).fetchone()
-                    conn.close()
-                    return api_json({'id': existed['id'] if existed else None,
-                                     'exists': True})
-                rid = cur.lastrowid
-                action = 'ПРИЧИНА ДОБАВЛЕНА (API)'
+                if existed:      # реактивация неактивного повтора
+                    conn.execute('UPDATE reasons SET active=1 WHERE id=?',
+                                 (existed['id'],))
+                    rid = existed['id']
+                    action = 'ПРИЧИНА ДОБАВЛЕНА (API)'
+                else:
+                    cur = conn.execute(
+                        'INSERT INTO reasons(name, journal) VALUES (?,?)',
+                        (name, journal))
+                    rid = cur.lastrowid
+                    action = 'ПРИЧИНА ДОБАВЛЕНА (API)'
             conn.commit()
         finally:
             conn.close()
-        audit(action, f'{name}', user=f"{u['full_name']} ({u['login']})")
+        audit(action, f'{JOURNAL_TITLES.get(journal, "общая")}: {name}',
+              user=f"{u['full_name']} ({u['login']})")
         return api_json({'ok': True, 'id': int(rid)}, 201 if not data.get('id') else 200)
     conn = get_db()
+    # GET — только актуальные записи: повторы выгруженных причин скрыты (v1.5.7)
     rows = conn.execute(
-        'SELECT r.id, r.name, COUNT(o.id) used FROM reasons r '
-        'LEFT JOIN orders o ON o.reason_id=r.id GROUP BY r.id ORDER BY r.name').fetchall()
+        'SELECT r.id, r.name, COALESCE(r.journal, \'opeka\') AS journal, '
+        'COUNT(o.id) used FROM reasons r '
+        'LEFT JOIN orders o ON o.reason_id=r.id '
+        'WHERE r.active=1 GROUP BY r.id ORDER BY r.journal, r.name').fetchall()
     conn.close()
-    return api_json([{'id': r['id'], 'name': r['name'], 'used': r['used']} for r in rows])
+    return api_json([{'id': r['id'], 'name': r['name'],
+                      'journal': r['journal'], 'used': r['used']} for r in rows])
 
 
 @app.route('/api/v1/reasons/<int:rid>', methods=['DELETE'])
@@ -3206,7 +3289,9 @@ def service():
         types_by_journal[j] = {'title': JOURNAL_TITLES[j], 'count': cnt}
     employees_n = conn.execute('SELECT COUNT(*) c FROM employees').fetchone()['c']
     # справочник «Причины» (v1.5.4): количество + загрузка из Excel в этом разделе
-    reasons_n = conn.execute('SELECT COUNT(*) c FROM reasons').fetchone()['c']
+    # учитываются только актуальные записи (повторы выгрузок скрыты, v1.5.7)
+    reasons_n = conn.execute(
+        'SELECT COUNT(*) c FROM reasons WHERE active=1').fetchone()['c']
     conn.close()
     return render_template('service.html', archives=archives,
                            journals=JOURNAL_TYPES, journal_titles=JOURNAL_TITLES,

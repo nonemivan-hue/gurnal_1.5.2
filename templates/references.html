@@ -82,7 +82,15 @@
 <h2 id="rs-list">Справочник «Причины»</h2>
 <p class="muted">Причины используются полем «Причина» во всех журналах;
    справочник разделён по видам приказов (Опека / Нуждаемость / Профилактика).
-   Сейчас в справочнике: {{ reasons_n }}.</p>
+   Сейчас в справочнике: {{ reasons_n }}.
+   {% if reasons_dupes %}<br><span class="hint">В справочнике обнаружены повторы
+   выгруженных причин — неактивных записей: {{ reasons_dupes }}
+   (в списках журналов они скрыты).</span>
+   <a class="btn sm" href="{{ url_for('references', tab='reasons', show_dupes=1) }}#rs-list">
+     Показать повторы</a>{% endif %}
+   {% if request.args.get('show_dupes') %}
+   <a class="btn sm" href="{{ url_for('references', tab='reasons') }}#rs-list">
+     Скрыть повторы</a>{% endif %}</p>
 {% if can_edit_rs %}
 <div class="panel">
   <h3 id="rsTitle">Новая причина</h3>
@@ -103,10 +111,10 @@
   <tr><th>№ п/п</th><th>Вид приказа</th><th>Причина</th><th>Используется в приказах</th>
       {% if can_edit_rs %}<th></th>{% endif %}</tr>
   {% for r in reasons_rows %}
-  <tr>
+  <tr{% if not r.active %} style="opacity:.55"{% endif %}>
     <td>{{ loop.index }}</td>
     <td>{{ journal_titles[r.journal] or 'Опека' }}</td>
-    <td>{{ r.name }}</td>
+    <td>{{ r.name }}{% if not r.active %} <span class="hint">(повтор, скрыт в журналах)</span>{% endif %}</td>
     <td>{{ r.used }}</td>
     {% if can_edit_rs %}
     <td class="actions">
@@ -128,7 +136,8 @@
   <p class="hint">Столбец «Причина» (распознаются также «Наименование причины»,
      «Основание»). Необязательный столбец «Вид приказа» (Опека / Нуждаемость /
      Профилактика) задаёт принадлежность причины; без него строки относятся к
-     журналу «Опека». Дубликаты (внутри своего вида) пропускаются.</p>
+     журналу «Опека». Повторы (внутри своего вида) пропускаются — справочник
+     пополняется только новыми причинами.</p>
   <form method="post" action="{{ url_for('reasons_import') }}" enctype="multipart/form-data">
     <label>Файл Excel (.xlsx) <input type="file" name="file" accept=".xlsx" required></label>
     <button class="btn primary" type="submit">Импортировать</button>
