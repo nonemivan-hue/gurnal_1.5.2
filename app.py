@@ -79,7 +79,7 @@ def find_free_port(start):
                 continue
     return None
 
-APP_VERSION = '1.5.2'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
+APP_VERSION = '1.5.4'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
 # 1.2.0 — поле «Примечание» во всех приказах + загрузка сотрудников и видов приказов из Excel
 # 1.2.1 — куратору разрешено редактирование справочника «Виды приказов»
 # 1.2.2 — панель загрузки приказов в журналы из Excel + подробное описание обновления программы
@@ -97,6 +97,13 @@ APP_VERSION = '1.5.2'  # 1.5.0 — клиентское приложение; 1.
 #         справочник «Причины» + поле «Причина» в журнале «Опека»; новая логика отчёта
 #         «Распечатка журнала за период» (печать / Excel / Word, выборка по виду приказа,
 #         для «Опеки» наименование + причина в скобках)
+# 1.5.3 — загрузка документов из Excel перенесена в меню администратора «Сервис»
+#         с разделением по видам приказов (Опека / Нуждаемость / Профилактика);
+#         импорты справочников сотрудников и видов приказов — там же
+# 1.5.4 — добавлен справочник «Причины»: страница /reasons (просмотр, добавление,
+#         переименование, удаление с контролем использования), загрузка причин из
+#         Excel в разделе «Сервис → Загрузка документов из Excel», шаблон Excel,
+#         API /api/v1/reasons (GET/POST/DELETE)
 
 
 def setup_logging():
@@ -715,6 +722,13 @@ def can_edit_order_types(user=None):
     return bool(user) and user['role_name'] in FULL_DATA_ROLES + ('Куратор',)
 
 
+def can_edit_reasons(user=None):
+    """Справочник «Причины» (поле журнала «Опека»): Администратор, Начальник отдела, Куратор.
+
+    Права такие же, как у справочника «Виды приказов» (версия 1.5.4)."""
+    return can_edit_order_types(user)
+
+
 def can_view_reports(user=None):
     """Отчёты: Администратор, Начальник отдела и Куратор."""
     user = user or current_user()
@@ -1027,6 +1041,36 @@ def _read_xlsx_rows(stream):
     return [r for r in rows if any(r)]
 
 
+def _service_redirect():
+    """URL страницы «Сервис» с якорем раздела загрузки документов из Excel."""
+    return url_for('service', _external=True) + '#excel-import'
+
+
+def _redirect_back(default_endpoint, back_to_service=False, **defaults):
+    """Вернуться на страницу, откуда был вызван импорт (например, «Сервис»),
+    иначе — на указанный запасной адрес.
+
+    При back_to_service=True возврат на собственную страницу справочника
+    не выполняется (панели загрузки оттуда перенесены в сервис) — вместо
+    этого пользователь попадает на «Сервис → Загрузка документов из Excel».
+    """
+    ref = request.referrer or ''
+    try:
+        same_site = urlparse(ref).netloc == urlparse(request.url).netloc
+    except Exception:
+        same_site = False
+    ep = url_for(default_endpoint, **defaults)
+    if ref and same_site and urlparse(ref).path == ep:
+        if back_to_service:
+            return redirect(_service_redirect())
+        return redirect(url_for(default_endpoint, **defaults))
+    if ref and same_site and urlparse(ref).path not in ('/', '/login'):
+        return redirect(ref)
+    if back_to_service:
+        return redirect(_service_redirect())
+    return redirect(url_for(default_endpoint, **defaults))
+
+
 def _mem_xlsx(wb, filename):
     buf = io.BytesIO()
     wb.save(buf)
@@ -1068,15 +1112,15 @@ def employees_import():
     f = request.files.get('file')
     if not f or not f.filename.lower().endswith('.xlsx'):
         flash('Выберите файл Excel в формате .xlsx', 'err')
-        return redirect(url_for('employees'))
+        return _redirect_back('employees', back_to_service=True)
     try:
         rows = _read_xlsx_rows(io.BytesIO(f.read()))
     except Exception as e:
         flash(f'Не удалось прочитать файл: {e}', 'err')
-        return redirect(url_for('employees'))
+        return _redirect_back('employees', back_to_service=True)
     if len(rows) < 2:
         flash('В файле нет данных (нужны заголовок и хотя бы одна строка)', 'err')
-        return redirect(url_for('employees'))
+        return _redirect_back('employees', back_to_service=True)
     m = _cell_map(rows[0])
     ci_fio = _pick(m, 'фиосотрудника', 'фио', 'фамилияимяотчество', 'сотрудник')
     ci_pos = _pick(m, 'должность')
@@ -1085,7 +1129,7 @@ def employees_import():
     ci_pw = _pick(m, 'пароль', 'password')
     if ci_fio is None:
         flash('В файле не найден столбец «ФИО сотрудника»', 'err')
-        return redirect(url_for('employees'))
+        return _redirect_back('employees', back_to_service=True)
     conn = get_db()
     roles = {r['name']: r['id'] for r in conn.execute('SELECT id, name FROM roles')}
     created = updated = skipped = 0
@@ -1144,7 +1188,7 @@ def employees_import():
     if errors:
         msg += '. Замечания: ' + '; '.join(errors[:5])
     flash(msg, 'ok')
-    return redirect(url_for('employees'))
+    return _redirect_back('employees', back_to_service=True)
 
 
 @app.route('/order_types/template')
@@ -1179,21 +1223,21 @@ def order_types_import():
     f = request.files.get('file')
     if not f or not f.filename.lower().endswith('.xlsx'):
         flash('Выберите файл Excel в формате .xlsx', 'err')
-        return redirect(url_for('order_types'))
+        return _redirect_back('order_types', back_to_service=True)
     try:
         rows = _read_xlsx_rows(io.BytesIO(f.read()))
     except Exception as e:
         flash(f'Не удалось прочитать файл: {e}', 'err')
-        return redirect(url_for('order_types'))
+        return _redirect_back('order_types', back_to_service=True)
     if len(rows) < 2:
         flash('В файле нет данных (нужны заголовок и хотя бы одна строка)', 'err')
-        return redirect(url_for('order_types'))
+        return _redirect_back('order_types', back_to_service=True)
     m = _cell_map(rows[0])
     ci_kind = _pick(m, 'видприказа', 'вид', 'журнал')
     ci_name = _pick(m, 'наименованиеприказа', 'наименование', 'приказ')
     if ci_kind is None or ci_name is None:
         flash('В файле не найдены столбцы «Вид приказа» и «Наименование приказа»', 'err')
-        return redirect(url_for('order_types'))
+        return _redirect_back('order_types', back_to_service=True)
     # карта: название журнала (в любом регистре) -> ключ журнала
     title_to_key = {t.lower(): k for k, t in JOURNAL_TITLES.items()}
     conn = get_db()
@@ -1221,7 +1265,147 @@ def order_types_import():
     if errors:
         msg += '. Замечания: ' + '; '.join(errors[:5])
     flash(msg, 'ok')
-    return redirect(url_for('order_types'))
+    return _redirect_back('order_types', back_to_service=True)
+
+
+# ---------------------------------------------------------------- справочник причин
+# Справочник «Причины» используется полем «Причина» журнала «Опека»
+# (REASON_JOURNAL). Раньше он существовал только в базе и наполнялся
+# автоматически при импорте Excel приказов — теперь доступен как отдельный
+# справочник: страница просмотра/редактирования + загрузка из Excel в сервисе.
+
+@app.route('/reasons')
+def reasons():
+    """Справочник «Причины» (поле «Причина» журнала «Опека»)."""
+    require_login()
+    conn = get_db()
+    rows = conn.execute(
+        'SELECT r.id, r.name, COUNT(o.id) used '
+        'FROM reasons r LEFT JOIN orders o ON o.reason_id=r.id '
+        'GROUP BY r.id ORDER BY r.name').fetchall()
+    conn.close()
+    return render_template('reasons.html', rows=rows)
+
+
+@app.route('/reasons/save', methods=['POST'])
+def reason_save():
+    """Добавить / переименовать причину."""
+    user = current_user()
+    if not can_edit_reasons(user):
+        abort(403)
+    rid = request.form.get('id', type=int)
+    name = request.form.get('name', '').strip()
+    if not name:
+        flash('Укажите наименование причины', 'err')
+        return redirect(url_for('reasons'))
+    conn = get_db()
+    try:
+        if rid:
+            conn.execute('UPDATE reasons SET name=? WHERE id=?', (name, rid))
+        else:
+            conn.execute('INSERT INTO reasons(name) VALUES (?)', (name,))
+        conn.commit()
+        audit('ПРИЧИНА СОХРАНЕНА', f'{name}')
+        flash('Причина сохранена', 'ok')
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        audit('ОШИБКА: ДУБЛЬ ПРИЧИНЫ', f'{name}')
+        flash('Такая причина уже существует', 'err')
+    finally:
+        conn.close()
+    return redirect(url_for('reasons'))
+
+
+@app.route('/reasons/delete/<int:rid>', methods=['POST'])
+def reason_delete(rid):
+    """Удалить причину (если она не используется приказами)."""
+    if not can_edit_reasons():
+        abort(403)
+    conn = get_db()
+    used = conn.execute('SELECT COUNT(*) c FROM orders WHERE reason_id=?',
+                        (rid,)).fetchone()['c']
+    if used:
+        conn.close()
+        flash('Нельзя удалить: причина используется в документах журнала «Опека»', 'err')
+    else:
+        conn.execute('DELETE FROM reasons WHERE id=?', (rid,))
+        conn.commit()
+        conn.close()
+        audit('ПРИЧИНА УДАЛЕНА', f'id={rid}')
+        flash('Удалено', 'ok')
+    return redirect(url_for('reasons'))
+
+
+@app.route('/reasons/template')
+def reasons_template():
+    """Шаблон Excel для загрузки причин."""
+    _need_xlsx()
+    require_login()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Причины'
+    ws.append(['Причина'])
+    for rn in REASON_DEMO[:3]:
+        ws.append([rn])
+    for c in ws[1]:
+        c.font = Font(bold=True)
+    ws.column_dimensions['A'].width = 50
+    return _mem_xlsx(wb, 'шаблон_причины.xlsx')
+
+
+@app.route('/reasons/import', methods=['POST'])
+def reasons_import():
+    """Массовая загрузка причин из Excel (.xlsx) — раздел «Сервис».
+
+    Достаточно одного столбца «Причина» (распознаются также варианты
+    «Наименование причины», «Основание»). Дубликаты пропускаются;
+    неизвестные значения регистрируются в справочнике (как при импорте
+    приказов журнала «Опека»).
+    """
+    user = current_user()
+    if not can_edit_reasons(user):
+        abort(403)
+    _need_xlsx()
+    f = request.files.get('file')
+    if not f or not f.filename.lower().endswith('.xlsx'):
+        flash('Выберите файл Excel в формате .xlsx', 'err')
+        return _redirect_back('reasons', back_to_service=True)
+    try:
+        rows = _read_xlsx_rows(io.BytesIO(f.read()))
+    except Exception as e:
+        flash(f'Не удалось прочитать файл: {e}', 'err')
+        return _redirect_back('reasons', back_to_service=True)
+    if len(rows) < 2:
+        flash('В файле нет данных (нужны заголовок и хотя бы одна строка)', 'err')
+        return _redirect_back('reasons', back_to_service=True)
+    m = _cell_map(rows[0])
+    ci_name = _pick(m, 'причина', 'наименованиепричины', 'основание', 'reason')
+    if ci_name is None:
+        ci_name = _pick(m, 'наименование')      # запасной вариант заголовка
+    if ci_name is None:
+        flash('В файле не найден столбец «Причина»', 'err')
+        return _redirect_back('reasons', back_to_service=True)
+    conn = get_db()
+    created = skipped = 0
+    for n, row in enumerate(rows[1:], start=2):
+        name = row[ci_name] if ci_name < len(row) else ''
+        if not name:
+            skipped += 1
+            continue
+        old = conn.execute('SELECT id FROM reasons WHERE LOWER(TRIM(name))=?',
+                           (name.lower(),)).fetchone()
+        if old:
+            skipped += 1
+        else:
+            _get_or_create_reason(conn, name)
+            created += 1
+    conn.commit()
+    conn.close()
+    audit('ИМПОРТ ПРИЧИН ИЗ EXCEL',
+          f'файл={f.filename}, создано={created}, пропущено={skipped}')
+    msg = f'Импорт завершён: создано — {created}, пропущено (дубликаты) — {skipped}'
+    flash(msg, 'ok')
+    return _redirect_back('reasons', back_to_service=True)
 
 
 # ---------------------------------------------------------------- журналы
@@ -1499,15 +1683,15 @@ def journal_import(journal):
     f = request.files.get('file')
     if not f or not f.filename.lower().endswith('.xlsx'):
         flash('Выберите файл Excel в формате .xlsx', 'err')
-        return redirect(url_for('journal_list', journal=journal))
+        return _redirect_back('journal_list', journal=journal)
     try:
         rows = _read_xlsx_rows(io.BytesIO(f.read()))
     except Exception as e:
         flash(f'Не удалось прочитать файл: {e}', 'err')
-        return redirect(url_for('journal_list', journal=journal))
+        return _redirect_back('journal_list', journal=journal)
     if len(rows) < 2:
         flash('В файле нет данных (нужны заголовок и хотя бы одна строка)', 'err')
-        return redirect(url_for('journal_list', journal=journal))
+        return _redirect_back('journal_list', journal=journal)
     m = _cell_map(rows[0])
     ci_num = _pick(m, '№приказа', 'нприказа', 'номерприказа', 'номер', 'num')
     ci_date = _pick(m, 'датаприказа', 'дата', 'date')
@@ -1522,7 +1706,7 @@ def journal_import(journal):
                  if REASONS_ENABLED.get(journal) else None)
     if ci_name is None and ci_person is None:
         flash('В файле не найдены столбцы «Наименование приказа» / «Ф.И.О. в отношении кого»', 'err')
-        return redirect(url_for('journal_list', journal=journal))
+        return _redirect_back('journal_list', journal=journal)
     title_to_key = {t.lower(): k for k, t in JOURNAL_TITLES.items()}
     today = date.today().isoformat()
     conn = get_db()
@@ -1627,7 +1811,7 @@ def journal_import(journal):
     if errors:
         msg += '. Замечания: ' + '; '.join(errors[:8])
     flash(msg, 'ok')
-    return redirect(url_for('journal_list', journal=journal))
+    return _redirect_back('journal_list', journal=journal)
 
 
 def _parse_order_filename(fname):
@@ -2208,6 +2392,7 @@ def api_session():
                      'reports': can_view_reports(u),
                      'employees_dir': can_edit_employees(u),
                      'order_types_dir': can_edit_order_types(u),
+                     'reasons_dir': can_edit_reasons(u),
                      'version': APP_VERSION})
 
 
@@ -2273,6 +2458,89 @@ def api_order_types():
     return api_json([{'id': r['id'], 'kind': r['kind'],
                       'kind_title': JOURNAL_TITLES.get(r['kind'], r['kind']),
                       'name': r['name']} for r in rows])
+
+
+# ---------------------------------------------------------------- справочник «Причины» (API, v1.5.4)
+
+@app.route('/api/v1/reasons', methods=['GET', 'POST'])
+def api_reasons():
+    """Справочник «Причины»: GET — список (с счётчиком использования),
+    POST — добавить или переименовать причину."""
+    u = api_user()
+    if request.method == 'POST':
+        if not can_edit_reasons(u):
+            abort(403)
+        data = request.get_json(silent=True) or {}
+        name = _norm(data.get('name') or '').strip()
+        rid = data.get('id')
+        if not name:
+            return api_json({'error': 'Укажите наименование причины'}, 400)
+        conn = get_db()
+        try:
+            if rid:
+                if not conn.execute('SELECT 1 FROM reasons WHERE id=?',
+                                    (int(rid),)).fetchone():
+                    conn.close(); abort(404)
+                dup = conn.execute(
+                    'SELECT 1 FROM reasons WHERE LOWER(TRIM(name))=? AND id<>?',
+                    (name.lower(), int(rid))).fetchone()
+                if dup:
+                    conn.close()
+                    return api_json({'error': 'Такая причина уже существует'}, 400)
+                conn.execute('UPDATE reasons SET name=? WHERE id=?', (name, int(rid)))
+                action = 'ПРИЧИНА ИЗМЕНЕНА (API)'
+            else:
+                # UNIQUE по name — регистронезависимая проверка дубликата
+                existed = conn.execute(
+                    'SELECT id FROM reasons WHERE LOWER(TRIM(name))=?',
+                    (name.lower(),)).fetchone()
+                if existed:
+                    conn.close()
+                    return api_json({'id': existed['id'], 'exists': True})
+                try:
+                    cur = conn.execute('INSERT INTO reasons(name) VALUES (?)', (name,))
+                except sqlite3.IntegrityError:      # гонка параллельных вставок
+                    existed = conn.execute(
+                        'SELECT id FROM reasons WHERE LOWER(TRIM(name))=?',
+                        (name.lower(),)).fetchone()
+                    conn.close()
+                    return api_json({'id': existed['id'] if existed else None,
+                                     'exists': True})
+                rid = cur.lastrowid
+                action = 'ПРИЧИНА ДОБАВЛЕНА (API)'
+            conn.commit()
+        finally:
+            conn.close()
+        audit(action, f'{name}', user=f"{u['full_name']} ({u['login']})")
+        return api_json({'ok': True, 'id': int(rid)}, 201 if not data.get('id') else 200)
+    conn = get_db()
+    rows = conn.execute(
+        'SELECT r.id, r.name, COUNT(o.id) used FROM reasons r '
+        'LEFT JOIN orders o ON o.reason_id=r.id GROUP BY r.id ORDER BY r.name').fetchall()
+    conn.close()
+    return api_json([{'id': r['id'], 'name': r['name'], 'used': r['used']} for r in rows])
+
+
+@app.route('/api/v1/reasons/<int:rid>', methods=['DELETE'])
+def api_reason_delete(rid):
+    """Удаление причины через API; запрещено, если она используется приказами."""
+    u = api_user()
+    if not can_edit_reasons(u):
+        abort(403)
+    conn = get_db()
+    if not conn.execute('SELECT 1 FROM reasons WHERE id=?', (rid,)).fetchone():
+        conn.close(); abort(404)
+    used = conn.execute('SELECT COUNT(*) c FROM orders WHERE reason_id=?',
+                        (rid,)).fetchone()['c']
+    if used:
+        conn.close()
+        return api_json({'error': f'Причина используется в приказах ({used} шт.), '
+                                  'удаление запрещено'}, 400)
+    conn.execute('DELETE FROM reasons WHERE id=?', (rid,))
+    conn.commit(); conn.close()
+    audit('ПРИЧИНА УДАЛЕНА (API)', f'id={rid}',
+          user=f"{u['full_name']} ({u['login']})")
+    return api_json({'ok': True})
 
 
 @app.route('/api/v1/order_types/<int:tid>', methods=['DELETE'])
@@ -2782,7 +3050,22 @@ def service():
                                  'size': f"{os.path.getsize(p)/1024:.0f} КБ",
                                  'date': datetime.fromtimestamp(os.path.getmtime(p))
                                          .strftime('%d.%m.%Y %H:%M')})
-    return render_template('service.html', archives=archives)
+    # данные для раздела «Загрузка документов из Excel» (v1.5.3):
+    # справочники + виды приказов (журналы) с количеством наименований
+    conn = get_db()
+    types_by_journal = {}
+    for j in JOURNAL_TYPES:
+        cnt = conn.execute('SELECT COUNT(*) c FROM order_types WHERE kind=?',
+                           (j,)).fetchone()['c']
+        types_by_journal[j] = {'title': JOURNAL_TITLES[j], 'count': cnt}
+    employees_n = conn.execute('SELECT COUNT(*) c FROM employees').fetchone()['c']
+    # справочник «Причины» (v1.5.4): количество + загрузка из Excel в этом разделе
+    reasons_n = conn.execute('SELECT COUNT(*) c FROM reasons').fetchone()['c']
+    conn.close()
+    return render_template('service.html', archives=archives,
+                           journals=JOURNAL_TYPES, journal_titles=JOURNAL_TITLES,
+                           types_by_journal=types_by_journal, employees_n=employees_n,
+                           reasons_n=reasons_n)
 
 
 @app.route('/service/backup', methods=['POST'])

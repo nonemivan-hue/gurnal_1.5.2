@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+data/secret_key.txt
+data/orders.db

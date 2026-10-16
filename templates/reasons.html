@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Справочник «Причины»</h1>
+<p class="muted">Причины используются в поле «Причина» журнала
+   <a href="{{ url_for('journal_list', journal='opeka') }}">«Опека»</a>.
+   {% if cu and cu.role_name in ['Администратор','Начальник отдела','Куратор'] %}
+   📥 Массовая загрузка причин из Excel — в меню администратора:
+   <a href="{{ url_for('service') }}#excel-import">Сервис → Загрузка документов из Excel</a>.
+   {% endif %}</p>
+{% if cu and cu.role_name in ['Администратор','Начальник отдела','Куратор'] %}
+<div class="panel">
+  <h2 id="rsTitle">Новая причина</h2>
+  <form method="post" action="{{ url_for('reason_save') }}" id="rsForm">
+    <input type="hidden" name="id" id="rs_id">
+    <label>Наименование причины
+      <input name="name" id="rs_name" required style="min-width:340px"></label>
+    <button class="btn primary">Сохранить</button>
+    <button class="btn" type="button" onclick="resetRs()">Сброс</button>
+  </form>
+</div>
+{% endif %}
+<table class="grid">
+  <tr><th>№ п/п</th><th>Причина</th><th>Используется в приказах</th>
+      {% if cu and cu.role_name in ['Администратор','Начальник отдела','Куратор'] %}<th></th>{% endif %}</tr>
+  {% for r in rows %}
+  <tr>
+    <td>{{ loop.index }}</td>
+    <td>{{ r.name }}</td>
+    <td>{{ r.used }}</td>
+    {% if cu and cu.role_name in ['Администратор','Начальник отдела','Куратор'] %}
+    <td class="actions">
+      <button class="btn sm" data-id="{{ r.id }}" data-name="{{ r.name }}"
+              onclick="editRs(this)">✏️</button>
+      <form method="post" action="{{ url_for('reason_delete', rid=r.id) }}" style="display:inline"
+            onsubmit="return confirm('Удалить?')"><button class="btn sm danger">🗑</button></form>
+    </td>
+    {% endif %}
+  </tr>
+  {% else %}
+  <tr><td colspan="4" class="empty">Справочник пуст</td></tr>
+  {% endfor %}
+</table>
+{% if cu and cu.role_name in ['Администратор','Начальник отдела','Куратор'] %}
+<script>
+function editRs(b){
+  document.getElementById('rs_id').value=b.dataset.id;
+  document.getElementById('rs_name').value=b.dataset.name;
+  document.getElementById('rsTitle').textContent='Редактирование причины';
+}
+function resetRs(){document.getElementById('rsForm').reset();document.getElementById('rs_id').value='';
+  document.getElementById('rsTitle').textContent='Новая причина';}
+</script>
+{% endif %}
+{% endblock %}

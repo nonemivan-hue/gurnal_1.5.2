@@ -74,6 +74,80 @@
   </div>
 </div>
 
+<h2 id="excel-import">📥 Загрузка документов из Excel</h2>
+<p class="muted">Массовая загрузка данных из файлов <code>.xlsx</code>: справочники и
+приказы в журналы — с разделением по видам приказов (Опека / Нуждаемость / Профилактика).
+Первая строка файла — заголовки столбцов (см. шаблоны). Результаты импорта отображаются
+всплывающим сообщением на этой странице.</p>
+
+<div class="cols">
+  {# --- справочник сотрудников --- #}
+  <div class="panel">
+    <h2>👥 Сотрудники</h2>
+    <p class="hint">Столбцы: «ФИО сотрудника», «Должность», «Роль», «Логин», «Пароль».
+       Существующие сотрудники обновляются, новые создаются; если пароль не указан —
+       устанавливается временный «1234». Сейчас в справочнике: {{ employees_n }}.</p>
+    <form method="post" action="{{ url_for('employees_import') }}" enctype="multipart/form-data">
+      <label>Файл Excel (.xlsx) <input type="file" name="file" accept=".xlsx" required></label>
+      <button class="btn primary" type="submit">Импортировать</button>
+      <a class="btn" href="{{ url_for('employees_template') }}">⬇ Скачать шаблон</a>
+    </form>
+  </div>
+
+  {# --- справочник видов приказов --- #}
+  <div class="panel">
+    <h2>🗂 Виды приказов (наименования)</h2>
+    <p class="hint">Столбцы: «Вид приказа» (Опека / Нуждаемость / Профилактика),
+       «Наименование приказа». Дубликаты пар «вид + наименование» пропускаются.</p>
+    <form method="post" action="{{ url_for('order_types_import') }}" enctype="multipart/form-data">
+      <label>Файл Excel (.xlsx) <input type="file" name="file" accept=".xlsx" required></label>
+      <button class="btn primary" type="submit">Импортировать</button>
+      <a class="btn" href="{{ url_for('order_types_template') }}">⬇ Скачать шаблон</a>
+    </form>
+  </div>
+
+  {# --- справочник причин (поле журнала «Опека», v1.5.4) --- #}
+  <div class="panel">
+    <h2>❓ Причины (журнал «Опека»)</h2>
+    <p class="hint">Столбец «Причина» (распознаются также «Наименование причины»,
+       «Основание»). Дубликаты пропускаются; сейчас в справочнике: {{ reasons_n }}.
+       Просмотр и редактирование — <a href="{{ url_for('reasons') }}">Справочник «Причины»</a>.</p>
+    <form method="post" action="{{ url_for('reasons_import') }}" enctype="multipart/form-data">
+      <label>Файл Excel (.xlsx) <input type="file" name="file" accept=".xlsx" required></label>
+      <button class="btn primary" type="submit">Импортировать</button>
+      <a class="btn" href="{{ url_for('reasons_template') }}">⬇ Скачать шаблон</a>
+    </form>
+  </div>
+</div>
+
+<div class="cols">
+  {# --- приказы в журналы: отдельная панель на каждый вид приказа --- #}
+  {% for j in journals %}
+  <div class="panel">
+    <h2>📄 Приказы — {{ journal_titles[j] }}</h2>
+    <p class="hint">Наименований в справочнике этого вида: {{ types_by_journal[j].count }}.
+       Столбцы: «№ приказа», «Дата приказа», «Вид приказа», «Наименование приказа»,
+       «Ф.И.О. в отношении кого приказ», «ФИО специалиста»{% if j == 'opeka' %}, «Причина»{% endif %},
+       «Примечание». № и дата необязательны (номер присвоится автоматически с суффиксом журнала).
+       Строки других видов приказа пропускаются; дубликаты не создаются.
+       Скан-коды PDF через Excel не загружаются — см. блок «Загрузка сканов PDF» ниже.</p>
+    <form method="post" action="{{ url_for('journal_import', journal=j) }}" enctype="multipart/form-data">
+      <label>Файл Excel (.xlsx) <input type="file" name="file" accept=".xlsx" required></label>
+      <button class="btn primary" type="submit">Импортировать</button>
+      <a class="btn" href="{{ url_for('journal_template', journal=j) }}">⬇ Скачать шаблон</a>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="panel">
+  <h2>📎 Пакетная загрузка сканов документов (PDF)</h2>
+  <p class="hint">ZIP-архив или список PDF-файлов: сканы прикрепляются к существующим
+     приказам по номеру из имени файла либо создают новые приказы
+     (формат имени: №приказа_дата_ФИО_примечание.pdf).</p>
+  <a class="btn" href="{{ url_for('scans_upload_page') }}">Открыть страницу загрузки сканов</a>
+</div>
+
 <h2>Список резервных копий</h2>
 <table class="grid">
   <tr><th>Файл</th><th>Дата создания</th><th>Размер</th><th></th></tr>

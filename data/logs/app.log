@@ -1,0 +1,136 @@
+2026-10-16 10:03:17 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | роль: Администратор
+2026-10-16 10:03:17 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 10:03:17 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 10:03:17 | INFO     | [HTTP] GET /service -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 10:03:17 | INFO     | [HTTP] GET /journal/opeka -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 10:03:17 | INFO     | [АУДИТ] ИМПОРТ ПРИКАЗОВ ИЗ EXCEL | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | журнал=Опека, файл=test.xlsx, создано=1, пропущено=0
+2026-10-16 10:03:17 | INFO     | [HTTP] POST /journal/opeka/import -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 10:03:17 | INFO     | [HTTP] GET /journal/opeka -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 10:03:17 | INFO     | [АУДИТ] ИМПОРТ ВИДОВ ПРИКАЗОВ ИЗ EXCEL | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | файл=t.xlsx, создано=1, пропущено=0
+2026-10-16 10:03:17 | INFO     | [HTTP] POST /order_types/import -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 10:03:17 | ERROR    | НЕОБРАБОТАННАЯ ОШИБКА при GET /order_types: Encountered unknown tag 'endif'. Jinja was looking for the following tags: 'endblock'. The innermost block that needs to be closed is 'block'.
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/app.py", line 924, in order_types
+    return render_template('order_types.html', rows=rows)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/flask/templating.py", line 149, in render_template
+    template = app.jinja_env.get_or_select_template(template_name_or_list)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/jinja2/environment.py", line 1087, in get_or_select_template
+    return self.get_template(template_name_or_list, parent, globals)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/jinja2/environment.py", line 1016, in get_template
+    return self._load_template(name, globals)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/jinja2/environment.py", line 975, in _load_template
+    template = self.loader.load(self, name, self.make_globals(globals))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/jinja2/loaders.py", line 138, in load
+    code = environment.compile(source, name, filename)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/jinja2/environment.py", line 771, in compile
+    self.handle_exception(source=source_hint)
+  File "/usr/local/lib/python3.12/site-packages/jinja2/environment.py", line 942, in handle_exception
+    raise rewrite_traceback_stack(source=source)
+  File "/workspace/templates/order_types.html", line 22, in template
+    {% endif %}
+jinja2.exceptions.TemplateSyntaxError: Encountered unknown tag 'endif'. Jinja was looking for the following tags: 'endblock'. The innermost block that needs to be closed is 'block'.
+
+2026-10-16 10:03:17 | WARNING  | [HTTP] GET /order_types -> 500 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 10:03:17 | INFO     | [АУДИТ] ИМПОРТ СОТРУДНИКОВ ИЗ EXCEL | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | файл=t.xlsx, создано=1, обновлено=0, пропущено=0
+2026-10-16 10:03:17 | INFO     | [HTTP] POST /employees/import -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 10:03:17 | INFO     | [HTTP] GET /employees -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 10:03:17 | INFO     | [HTTP] GET /employees/template -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 10:03:17 | INFO     | [HTTP] GET /order_types/template -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 10:03:17 | INFO     | [HTTP] GET /journal/opeka/template -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 10:03:17 | INFO     | [HTTP] GET /journal/profilaktika/template -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 10:03:17 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Сидоров С.С. (sidorov) | IP: 127.0.0.1 | роль: Куратор
+2026-10-16 10:03:17 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 2)
+2026-10-16 10:03:17 | WARNING  | [HTTP] GET /service -> 403 (IP: 127.0.0.1, user_id: 2)
+2026-10-16 10:03:17 | INFO     | [АУДИТ] ОТКАЗ В ДОСТУПЕ (403) | пользователь: Сидоров С.С. (sidorov) | IP: 127.0.0.1 | GET /service
+2026-10-16 12:14:17 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | роль: Администратор
+2026-10-16 12:14:17 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:17 | INFO     | [HTTP] GET /reasons -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:17 | INFO     | [АУДИТ] ПРИЧИНА СОХРАНЕНА | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | Проверка сервиса
+2026-10-16 12:14:17 | INFO     | [HTTP] POST /reasons/save -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:17 | INFO     | [АУДИТ] ПРИЧИНА УДАЛЕНА | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | id=6
+2026-10-16 12:14:17 | INFO     | [HTTP] POST /reasons/delete/6 -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:17 | INFO     | [HTTP] GET /reasons/template -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:17 | INFO     | [HTTP] POST /reasons/import -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:17 | INFO     | [HTTP] GET /service -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:17 | INFO     | [HTTP] GET /api/v1/reasons -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:17 | INFO     | [АУДИТ] ПРИЧИНА ДОБАВЛЕНА (API) | пользователь: id=Системный администратор (admin) | IP: 127.0.0.1 | Через API
+2026-10-16 12:14:17 | INFO     | [HTTP] POST /api/v1/reasons -> 201 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:17 | INFO     | [АУДИТ] ПРИЧИНА УДАЛЕНА (API) | пользователь: id=Системный администратор (admin) | IP: 127.0.0.1 | id=7
+2026-10-16 12:14:17 | INFO     | [HTTP] DELETE /api/v1/reasons/7 -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:17 | ERROR    | НЕОБРАБОТАННАЯ ОШИБКА при POST /api/v1/reasons: UNIQUE constraint failed: reasons.name
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/app.py", line 2498, in api_reasons
+    cur = conn.execute('INSERT INTO reasons(name) VALUES (?)', (name,))
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+sqlite3.IntegrityError: UNIQUE constraint failed: reasons.name
+
+2026-10-16 12:14:17 | WARNING  | [HTTP] POST /api/v1/reasons -> 500 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:17 | INFO     | [HTTP] GET /service -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:18 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Тест Кураторов (kur_test) | IP: 127.0.0.1 | роль: Куратор
+2026-10-16 12:14:18 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 2)
+2026-10-16 12:14:18 | INFO     | [АУДИТ] ПРИЧИНА СОХРАНЕНА | пользователь: Тест Кураторов (kur_test) | IP: 127.0.0.1 | Куратор добавил
+2026-10-16 12:14:18 | INFO     | [HTTP] POST /reasons/save -> 302 (IP: 127.0.0.1, user_id: 2)
+2026-10-16 12:14:18 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Тест Опека (op_test) | IP: 127.0.0.1 | роль: Опека
+2026-10-16 12:14:18 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 3)
+2026-10-16 12:14:18 | WARNING  | [HTTP] POST /reasons/save -> 403 (IP: 127.0.0.1, user_id: 3)
+2026-10-16 12:14:18 | INFO     | [АУДИТ] ОТКАЗ В ДОСТУПЕ (403) | пользователь: Тест Опека (op_test) | IP: 127.0.0.1 | POST /reasons/save
+2026-10-16 12:14:18 | INFO     | [HTTP] GET /reasons -> 200 (IP: 127.0.0.1, user_id: 3)
+2026-10-16 12:14:42 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | роль: Администратор
+2026-10-16 12:14:42 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:42 | INFO     | [HTTP] POST /reasons/import -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:42 | INFO     | [HTTP] GET /service -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:42 | INFO     | [HTTP] POST /reasons/delete/4 -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:42 | INFO     | [HTTP] GET /reasons -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:42 | INFO     | [АУДИТ] ПРИЧИНА ДОБАВЛЕНА (API) | пользователь: id=Системный администратор (admin) | IP: 127.0.0.1 | решение суда
+2026-10-16 12:14:42 | INFO     | [HTTP] POST /api/v1/reasons -> 201 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:42 | INFO     | [АУДИТ] ПРИЧИНА ДОБАВЛЕНА (API) | пользователь: id=Системный администратор (admin) | IP: 127.0.0.1 | Новая через API
+2026-10-16 12:14:42 | INFO     | [HTTP] POST /api/v1/reasons -> 201 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:42 | INFO     | [АУДИТ] ПРИЧИНА ИЗМЕНЕНА (API) | пользователь: id=Системный администратор (admin) | IP: 127.0.0.1 | Новая через API (испр.)
+2026-10-16 12:14:42 | INFO     | [HTTP] POST /api/v1/reasons -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:42 | INFO     | [АУДИТ] ПРИЧИНА УДАЛЕНА (API) | пользователь: id=Системный администратор (admin) | IP: 127.0.0.1 | id=7
+2026-10-16 12:14:42 | INFO     | [HTTP] DELETE /api/v1/reasons/7 -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:42 | WARNING  | [HTTP] DELETE /api/v1/reasons/4 -> 400 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:50 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | роль: Администратор
+2026-10-16 12:14:50 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:50 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:50 | INFO     | [HTTP] GET /reasons/template -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:50 | INFO     | [HTTP] POST /reasons/import -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:14:50 | INFO     | [HTTP] GET /service -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:15:03 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | роль: Администратор
+2026-10-16 12:15:03 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:15:03 | INFO     | [HTTP] POST /reasons/import -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:15:03 | INFO     | [HTTP] GET /service -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:15:03 | INFO     | [HTTP] POST /reasons/import -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:15:03 | INFO     | [HTTP] GET /service -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:15:09 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | роль: Администратор
+2026-10-16 12:15:09 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:15:09 | INFO     | [HTTP] POST /reasons/import -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:15:09 | INFO     | [HTTP] GET /service -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:15:17 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | роль: Администратор
+2026-10-16 12:15:17 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:15:17 | INFO     | [HTTP] POST /reasons/import -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:15:17 | INFO     | [HTTP] GET /service -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:15:34 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | роль: Администратор
+2026-10-16 12:15:34 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:15:34 | INFO     | [HTTP] POST /reasons/import -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:15:34 | INFO     | [HTTP] GET /service -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 12:15:48 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | роль: Администратор
+2026-10-16 12:15:48 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 1)
