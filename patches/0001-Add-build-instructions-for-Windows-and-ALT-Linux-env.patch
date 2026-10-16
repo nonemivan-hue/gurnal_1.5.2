@@ -1,0 +1,103 @@
+From dc70fed2e68bab0359197182052fa47ff809c779 Mon Sep 17 00:00:00 2001
+From: "qwen.ai[bot]" <qwenlm-intl@service.alibaba.com>
+Date: Thu, 15 Oct 2026 15:08:09 +0000
+Subject: [PATCH 1/4] Add build instructions for Windows and ALT Linux
+ environments
+
+- BUILD.md: Added comprehensive PyInstaller guide covering tool setup, server/client compilation via build.spec, execution, autostart configuration (NSSM/systemd), frozen-mode specifics, data migration between platforms, and cleanup
+- INSTALL.md: Inserted cross-reference to BUILD.md in the introduction for standalone executable packaging details
+- README.md: Updated documentation links to include BUILD.md and revised changelog entry to reflect new build instruction coverage
+---
+ BUILD.md   | 25 ++++++++++++++++++++++++-
+ INSTALL.md |  4 ++++
+ README.md  |  9 ++++++++-
+ 3 files changed, 36 insertions(+), 2 deletions(-)
+
+diff --git a/BUILD.md b/BUILD.md
+index 03b7414..48893d3 100644
+--- a/BUILD.md
++++ b/BUILD.md
+@@ -4,7 +4,7 @@
+ «Журнал регистрации приказов по видам деятельности» в самостоятельные
+ исполняемые файлы (без установленного Python на целевом компьютере) с помощью
+ PyInstaller. Готовые сборки различаются для Windows и ALT Linux — **собирать
+-нужно на той ОС, под которую intended запуск** (кросс-сборки PyInstaller не
++нужно на той ОС, под которую планируется запуск** (кросс-сборки PyInstaller не
+ поддерживает).
+ 
+ Состав сборки:
+@@ -21,6 +21,29 @@ PyInstaller. Готовые сборки различаются для Windows 
+ 
+ ---
+ 
++## 0. Краткая инструкция (для опытных)
++
++**Windows** (из каталога проекта, в `cmd` или PowerShell):
++
++```bat
++py -m pip install -r requirements.txt pyinstaller
++py -m PyInstaller --noconfirm build.spec
++dist\orders_server.exe
++```
++
++**ALT Linux** (из каталога проекта):
++
++```sh
++pip3 install -r requirements.txt pyinstaller   # либо apt-get, см. п. 1.2
++python3 -m PyInstaller --noconfirm build.spec
++./dist/orders_server
++```
++
++Результат — в каталоге `dist/`: `orders_server(.exe)` и `orders_client(.exe)`.
++Подробности подготовки, запуска, автозапуска и переноса данных — далее.
++
++---
++
+ ## 1. Подготовка: установка инструментов сборки
+ 
+ ### 1.1. Windows
+diff --git a/INSTALL.md b/INSTALL.md
+index 4bcde17..0ef87fd 100644
+--- a/INSTALL.md
++++ b/INSTALL.md
+@@ -6,6 +6,10 @@
+ отчёты с выгрузкой в Excel/Word и печатью, архивирование/восстановление,
+ обновление программы и журнал логирования.
+ 
++Сборку программы в самостоятельные исполняемые файлы (без установленного
++Python на целевом компьютере) для среды **Windows** и **ALT Linux** см.
++в файле `BUILD.md`.
++
+ ---
+ 
+ ## 1. Системные требования
+diff --git a/README.md b/README.md
+index a858d87..cdbeff4 100644
+--- a/README.md
++++ b/README.md
+@@ -7,6 +7,8 @@
+ и журнал логирования.
+ 
+ **Полное руководство по установке и настройке — в файле [INSTALL.md](INSTALL.md).**
++**Сборка в исполняемые файлы для Windows и ALT Linux (без Python на целевом
++компьютере) — в файле [BUILD.md](BUILD.md).**
+ 
+ ## Быстрый старт
+ 
+@@ -50,7 +52,12 @@ pip install -r requirements.txt
+ 
+ ## История изменений
+ 
+-- **Документация** — добавлено подробное описание автоматического запуска
++- **Документация** — добавлена инструкция по сборке приложения в исполняемые
++  файлы для среды Windows и ALT Linux (`BUILD.md`): подготовка инструментов,
++  сборка сервера и клиента через PyInstaller (`build.spec`) с краткой
++  инструкцией для опытных, запуск и автозапуск, особенности frozen-режима,
++  перенос каталога `data/` между платформами; ссылка на `BUILD.md` добавлена
++  в README. Также дополнено описание автоматического запуска
+   сервера на Windows (INSTALL.md, раздел 7.4; BUILD.md, раздел 3.1): служба
+   через NSSM с авторестартом, задача Планировщика заданий, папка «Автозагрузка»,
+   открытие порта в брандмауэре; готовые скрипты `scripts/windows/install_autostart.ps1`,
+-- 
+2.39.5
+

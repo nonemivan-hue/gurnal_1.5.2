@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="no-print">
+  <form method="get" class="period-form">
+    <label>Дата начала <input type="date" name="d1" value="{{ d1 }}"></label>
+    <label>Дата окончания <input type="date" name="d2" value="{{ d2 }}"></label>
+    <button class="btn primary">Сформировать</button>
+  </form>
+  <div class="toolbar">
+    <button class="btn" onclick="window.print()">🖨 Печать</button>
+    <a class="btn" href="?d1={{ d1 }}&d2={{ d2 }}&fmt=xlsx">⬇ Excel</a>
+    <a class="btn" href="?d1={{ d1 }}&d2={{ d2 }}&fmt=docx">⬇ Word</a>
+    <a class="btn" href="{{ url_for('reports') }}">← К отчётам</a>
+  </div>
+</div>
+
+<div class="printable">
+  <h1 class="rep-title">{{ title }}</h1>
+  <p class="rep-period">Период: <b>с {{ d1 }}</b> по <b>{{ d2 }}</b></p>
+  <table class="grid bordered">
+    <tr><th>Вид приказа</th>{% for c in cols %}<th class="rot">{{ c }}</th>{% endfor %}<th>Итого</th></tr>
+    {% for row in table %}
+    <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}<td><b>{{ row[1:] | sum }}</b></td></tr>
+    {% else %}
+    <tr><td colspan="{{ cols|length + 2 }}" class="empty">Нет данных за период</td></tr>
+    {% endfor %}
+    {% if table %}
+    <tr class="totalrow"><td><b>Итого</b></td>
+      {% for t in totals %}<td><b>{{ t }}</b></td>{% endfor %}
+      <td><b>{{ totals | sum }}</b></td></tr>
+    {% endif %}
+  </table>
+</div>
+{% endblock %}

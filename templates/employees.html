@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Справочник «Сотрудники»</h1>
+{% if cu and cu.role_name in ['Администратор','Начальник отдела'] %}
+<div class="panel no-print">
+  <h2>📥 Загрузка из Excel</h2>
+  <p class="muted">Формат файла .xlsx: первая строка — заголовки «ФИО сотрудника», «Должность», «Роль», «Логин», «Пароль».
+     Существующие сотрудники (по логину или ФИО+должности) обновляются, новые создаются.
+     Если пароль не указан — устанавливается временный «1234».</p>
+  <form method="post" action="{{ url_for('employees_import') }}" enctype="multipart/form-data" style="display:inline">
+    <input type="file" name="file" accept=".xlsx" required>
+    <button class="btn primary" type="submit">Импортировать</button>
+  </form>
+  <a class="btn" href="{{ url_for('employees_template') }}">⬇ Скачать шаблон Excel</a>
+</div>
+{% endif %}
+<table class="grid">
+  <tr><th>ФИО</th><th>Должность</th><th>Логин</th><th>Роль</th><th>Пароль</th><th></th></tr>
+  {% for r in rows %}
+  <tr>
+    <td>{{ r.full_name }}</td><td>{{ r.position }}</td>
+    <td>{{ r.login or '—' }}</td><td>{{ r.role_name or '—' }}</td>
+    <td>{{ '✔ задан' if r.password_hash else '—' }}{% if r.password_hash and not r.pwd_changed_at %}<br><span class="muted">(не менялся)</span>{% endif %}</td>
+    <td class="actions">
+      <button class="btn sm" data-id="{{ r.id }}" data-fio="{{ r.full_name }}" data-pos="{{ r.position or '' }}"
+              data-login="{{ r.login or '' }}" data-role="{{ r.role_name or 'Куратор' }}"
+              data-haspw="{{ 1 if r.password_hash else 0 }}" onclick="editEmp(this)">✏️</button>
+      <form method="post" action="{{ url_for('employee_delete', eid=r.id) }}" style="display:inline"
+            onsubmit="return confirm('Удалить сотрудника?')"><button class="btn sm danger">🗑</button></form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+<div class="panel">
+  <h2 id="empFormTitle">Новый сотрудник</h2>
+  <form method="post" action="{{ url_for('employee_save') }}" id="empForm">
+    <input type="hidden" name="id" id="emp_id">
+    <label>ФИО сотрудника <input name="full_name" id="emp_fio" required></label>
+    <label>Должность <input name="position" id="emp_pos"></label>
+    <label>Роль
+      <select name="role" id="emp_role">
+        {% for role in all_roles %}<option>{{ role }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Логин (для входа, необязательно) <input name="login" id="emp_login" autocomplete="off"></label>
+    <label id="pwLabel">Пароль <input type="password" name="password" id="emp_pw" autocomplete="new-password"></label>
+    <small id="pwHint"></small>
+    <button class="btn primary" type="submit">Сохранить</button>
+    <button class="btn" type="button" onclick="resetEmp()">Сброс</button>
+  </form>
+</div>
+<script>
+function editEmp(b){
+  document.getElementById('emp_id').value=b.dataset.id;
+  document.getElementById('emp_fio').value=b.dataset.fio;
+  document.getElementById('emp_pos').value=b.dataset.pos;
+  document.getElementById('emp_login').value=b.dataset.login;
+  document.getElementById('emp_role').value=b.dataset.role;
+  document.getElementById('empFormTitle').textContent='Редактирование: '+b.dataset.fio;
+  const haspw = b.dataset.haspw==='1';
+  document.getElementById('pwLabel').style.display = haspw ? 'none':'';
+  document.getElementById('pwHint').textContent = haspw ? 'Пароль задан. Оставьте пустым, чтобы не менять.' : '';
+  window.scrollTo(0, document.body.scrollHeight);
+}
+function resetEmp(){
+  document.getElementById('empForm').reset();
+  document.getElementById('emp_id').value='';
+  document.getElementById('empFormTitle').textContent='Новый сотрудник';
+  document.getElementById('pwLabel').style.display='';
+  document.getElementById('pwHint').textContent='';
+}
+</script>
+{% endblock %}

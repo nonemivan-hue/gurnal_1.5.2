@@ -1,0 +1,124 @@
+From 9386a55fc984fd1878946101b6794dc55610d2b3 Mon Sep 17 00:00:00 2001
+From: "qwen.ai[bot]" <qwenlm-intl@service.alibaba.com>
+Date: Fri, 16 Oct 2026 05:33:22 +0000
+Subject: [PATCH 3/4] =?UTF-8?q?=D0=94=D0=BE=D0=B1=D0=B0=D0=B2=D0=BB=D0=B5?=
+ =?UTF-8?q?=D0=BD=D0=B0=20=D1=84=D0=B8=D0=BB=D1=8C=D1=82=D1=80=D0=B0=D1=86?=
+ =?UTF-8?q?=D0=B8=D1=8F=20=D0=B2=20=D0=B6=D1=83=D1=80=D0=BD=D0=B0=D0=BB?=
+ =?UTF-8?q?=D0=B0=D1=85=20=D0=B4=D0=BE=D0=BA=D1=83=D0=BC=D0=B5=D0=BD=D1=82?=
+ =?UTF-8?q?=D0=BE=D0=B2:=20=D0=B2=D0=BE=D1=80=D0=BE=D0=BD=D0=BA=D0=B8=20?=
+ =?UTF-8?q?=D0=B4=D0=BB=D1=8F=20=D0=BA=D0=B0=D0=B6=D0=B4=D0=BE=D0=B3=D0=BE?=
+ =?UTF-8?q?=20=D1=81=D1=82=D0=BE=D0=BB=D0=B1=D1=86=D0=B0?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ README.md              |  7 +++++++
+ static/style.css       |  8 ++++++++
+ templates/journal.html | 46 +++++++++++++++++++++++++++++++++++++++++-
+ 3 files changed, 60 insertions(+), 1 deletion(-)
+
+diff --git a/README.md b/README.md
+index 1c44619..7078629 100644
+--- a/README.md
++++ b/README.md
+@@ -52,6 +52,13 @@ pip install -r requirements.txt
+ 
+ ## История изменений
+ 
++- **Фильтрация в журналах документов** — в каждом журнале приказов
++  (`/journal/<журнал>`) над таблицей добавлена строка с «воронками» ⏷ для
++  каждого столбца (№ п/п, № приказа, Дата, Наименование, Ф.И.О., специалист,
++  Примечание, Скан). Клик по воронке открывает поле ввода; фильтр работает
++  мгновенно на стороне клиента, не регистрозависимо, комбинируется по
++  нескольким столбцам и с общим поиском; рядом показывается число отфильтрованных
++  строк. Строка фильтров скрыта при печати.
+ - **Сортировка документов** — списки приказов (журналы, отчёты и API
+   `/api/v1/journal/<journal>/orders`) сортируются по дате приказа, а внутри
+   даты — по номеру приказа. Номер сравнивается как число (часть до дефиса),
+diff --git a/static/style.css b/static/style.css
+index 873ce48..1aa563c 100644
+--- a/static/style.css
++++ b/static/style.css
+@@ -74,3 +74,11 @@ table.grid{width:100%;border-collapse:collapse;background:#fff;margin:14px 0;box
+ .update-help ol,.update-help ul{margin:4px 0 8px 20px;padding:0;}
+ .update-help li{margin:3px 0;font-size:14px;}
+ .update-help code{background:#e8eef4;padding:1px 5px;border-radius:4px;font-size:13px;}
++
++/* ===== Фильтрация журнала по столбцам (воронки) ===== */
++.filter-row th{background:#f3f6fa;padding:4px 6px;border-bottom:2px solid #d5deea;}
++.funnel{cursor:pointer;color:#5b7592;font-size:13px;user-select:none;padding:0 4px;}
++.funnel:hover{color:#1c3f63;}
++.col-filter{width:100%;box-sizing:border-box;font-size:12px;padding:3px 6px;border:1px solid #c6d2e0;border-radius:4px;}
++#filterCount{margin-left:8px;color:#1c3f63;}
++@media print{.filter-row{display:none!important;}}
+diff --git a/templates/journal.html b/templates/journal.html
+index 3b436c9..b8a7255 100644
+--- a/templates/journal.html
++++ b/templates/journal.html
+@@ -37,11 +37,22 @@
+   <input name="q" value="{{ q }}" placeholder="Поиск по номеру / ФИО…">
+   <button class="btn">Найти</button>
+   {% if q %}<a class="btn" href="{{ url_for('journal_list', journal=journal) }}">Сброс</a>{% endif %}
++  <span class="hint" id="filterCount"></span>
+ </form>
+ 
+-<table class="grid">
++<table class="grid" id="journalTable">
+   <tr><th>№ п/п</th><th>№ приказа</th><th>Дата</th><th>Наименование приказа</th>
+       <th>Ф.И.О. в отношении кого</th><th>ФИО специалиста</th><th>Примечание</th><th>Скан</th><th class="no-print"></th></tr>
++  {# строка фильтрации-воронки для каждого столбца #}
++  <tr class="filter-row no-print">
++    {% for h in ['№ п/п','№ приказа','Дата','Наименование приказа','Ф.И.О. в отношении кого','ФИО специалиста','Примечание','Скан'] %}
++    <th class="filter-cell">
++      <span class="funnel" onclick="toggleFilter(this)" title="Фильтр по столбцу «{{ h }}»">⏷</span>
++      <input type="search" class="col-filter" data-col="{{ loop.index0 }}" placeholder="фильтр…" hidden>
++    </th>
++    {% endfor %}
++    <th class="no-print"></th>
++  </tr>
+   {% for r in rows %}
+   <tr>
+     <td>{{ loop.index }}</td>
+@@ -99,5 +110,38 @@ function openEdit(b){
+   document.getElementById('editPanel').style.display = 'block';
+   document.getElementById('editPanel').scrollIntoView({behavior:'smooth'});
+ }
++
++// ===== Фильтрация журнала по столбцам (воронки) =====
++function toggleFilter(f){
++  const inp = f.parentElement.querySelector('.col-filter');
++  inp.hidden = !inp.hidden;
++  if(!inp.hidden) inp.focus();
++  else { inp.value=''; applyFilters(); }
++}
++
++function applyFilters(){
++  const table = document.getElementById('journalTable');
++  const filters = [...document.querySelectorAll('#journalTable .col-filter')]
++    .filter(i => i.value.trim());
++  let shown = 0;
++  table.querySelectorAll('tbody tr, tr:not(.filter-row)').forEach(tr => {
++    if(tr.querySelector('th') || tr.classList.contains('filter-row')) return; // строка заголовков
++    const cells = tr.children;
++    let visible = true;
++    for(const f of filters){
++      const c = cells[+f.dataset.col];
++      const text = (c ? c.textContent : '').toLowerCase();
++      if(!text.includes(f.value.trim().toLowerCase())){ visible = false; break; }
++    }
++    tr.style.display = visible ? '' : 'none';
++    if(visible && cells.length > 1) shown++;
++  });
++  const cnt = document.getElementById('filterCount');
++  if(cnt) cnt.textContent = filters.length ? ('Показано строк: ' + shown) : '';
++}
++
++document.addEventListener('input', e => {
++  if(e.target.classList && e.target.classList.contains('col-filter')) applyFilters();
++});
+ </script>
+ {% endblock %}
+-- 
+2.39.5
+

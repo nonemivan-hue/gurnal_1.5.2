@@ -1,0 +1,141 @@
+From 94eb89d9cbad74199f0f2bb5043b184d96c151b3 Mon Sep 17 00:00:00 2001
+From: "qwen.ai[bot]" <qwenlm-intl@service.alibaba.com>
+Date: Fri, 16 Oct 2026 05:51:45 +0000
+Subject: [PATCH 4/4] =?UTF-8?q?=D0=94=D0=BE=D0=B1=D0=B0=D0=B2=D0=BB=D0=B5?=
+ =?UTF-8?q?=D0=BD=D0=B0=20=D1=81=D0=BE=D1=80=D1=82=D0=B8=D1=80=D0=BE=D0=B2?=
+ =?UTF-8?q?=D0=BA=D0=B0=20=D0=BF=D0=BE=20=D1=81=D1=82=D0=BE=D0=BB=D0=B1?=
+ =?UTF-8?q?=D1=86=D0=B0=D0=BC=20=D0=B2=20=D0=B6=D1=83=D1=80=D0=BD=D0=B0?=
+ =?UTF-8?q?=D0=BB=D0=B0=D1=85=20=D0=B4=D0=BE=D0=BA=D1=83=D0=BC=D0=B5=D0=BD?=
+ =?UTF-8?q?=D1=82=D0=BE=D0=B2=20(=D0=BA=D0=BB=D0=B8=D0=BA=20=D0=BF=D0=BE?=
+ =?UTF-8?q?=20=D0=B7=D0=B0=D0=B3=D0=BE=D0=BB=D0=BE=D0=B2=D0=BA=D1=83,=20?=
+ =?UTF-8?q?=D0=B5=D1=81=D1=82=D0=B5=D1=81=D1=82=D0=B2=D0=B5=D0=BD=D0=BD?=
+ =?UTF-8?q?=D1=8B=D0=B9=20=D1=87=D0=B8=D1=81=D0=BB=D0=BE=D0=B2=D0=BE=D0=B9?=
+ =?UTF-8?q?=20=D0=BF=D0=BE=D1=80=D1=8F=D0=B4=D0=BE=D0=BA)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ README.md              |  7 +++++
+ static/style.css       |  4 +++
+ templates/journal.html | 59 +++++++++++++++++++++++++++++++++++++++---
+ 3 files changed, 67 insertions(+), 3 deletions(-)
+
+diff --git a/README.md b/README.md
+index 7078629..6a3ef78 100644
+--- a/README.md
++++ b/README.md
+@@ -52,6 +52,13 @@ pip install -r requirements.txt
+ 
+ ## История изменений
+ 
++- **Сортировка по столбцам в журналах документов** — заголовки столбцов таблицы
++  журнала (`/journal/<журнал>`) стали кликабельными: клик сортирует строки по
++  этому столбцу (▲ по возрастанию, повторный клик — ▼ по убыванию). Числа
++  сравниваются как числа, поэтому даты (ГГГГ-ММ-ДД) и номера приказов вида
++  «2», «9», «12», «12а», «105» упорядочиваются корректно; текст — без учёта
++  регистра. Сортировка выполняется на стороне клиента и сочетается с
++  фильтрами-воронками и общим поиском.
+ - **Фильтрация в журналах документов** — в каждом журнале приказов
+   (`/journal/<журнал>`) над таблицей добавлена строка с «воронками» ⏷ для
+   каждого столбца (№ п/п, № приказа, Дата, Наименование, Ф.И.О., специалист,
+diff --git a/static/style.css b/static/style.css
+index 1aa563c..b33c21e 100644
+--- a/static/style.css
++++ b/static/style.css
+@@ -80,5 +80,9 @@ table.grid{width:100%;border-collapse:collapse;background:#fff;margin:14px 0;box
+ .funnel{cursor:pointer;color:#5b7592;font-size:13px;user-select:none;padding:0 4px;}
+ .funnel:hover{color:#1c3f63;}
+ .col-filter{width:100%;box-sizing:border-box;font-size:12px;padding:3px 6px;border:1px solid #c6d2e0;border-radius:4px;}
++/* Сортировка по столбцам: кликабельные заголовки с индикатором направления */
++th.sortable{cursor:pointer;user-select:none;white-space:nowrap;}
++th.sortable:hover{background:#dbe6f2;}
++th.sortable .sort-ind{color:#1c3f63;font-size:11px;margin-left:4px;}
+ #filterCount{margin-left:8px;color:#1c3f63;}
+ @media print{.filter-row{display:none!important;}}
+diff --git a/templates/journal.html b/templates/journal.html
+index b8a7255..9571559 100644
+--- a/templates/journal.html
++++ b/templates/journal.html
+@@ -41,8 +41,14 @@
+ </form>
+ 
+ <table class="grid" id="journalTable">
+-  <tr><th>№ п/п</th><th>№ приказа</th><th>Дата</th><th>Наименование приказа</th>
+-      <th>Ф.И.О. в отношении кого</th><th>ФИО специалиста</th><th>Примечание</th><th>Скан</th><th class="no-print"></th></tr>
++  {# заголовки: клик по столбцу — сортировка (по дате и номеру — с учётом числовых значений) #}
++  <tr>
++    {% for h in ['№ п/п','№ приказа','Дата','Наименование приказа','Ф.И.О. в отношении кого','ФИО специалиста','Примечание','Скан'] %}
++    <th class="sortable" data-sortcol="{{ loop.index0 }}" onclick="sortByColumn(this)"
++        title="Сортировать по столбцу «{{ h }}»">{{ h }}<span class="sort-ind"></span></th>
++    {% endfor %}
++    <th class="no-print"></th>
++  </tr>
+   {# строка фильтрации-воронки для каждого столбца #}
+   <tr class="filter-row no-print">
+     {% for h in ['№ п/п','№ приказа','Дата','Наименование приказа','Ф.И.О. в отношении кого','ФИО специалиста','Примечание','Скан'] %}
+@@ -73,7 +79,7 @@
+     </td>
+   </tr>
+   {% endfor %}
+-  {% if not rows %}<tr><td colspan="9" class="empty">Нет записей</td></tr>{% endif %}
++  {% if not rows %}<tr class="empty-row"><td colspan="9" class="empty">Нет записей</td></tr>{% endif %}
+ </table>
+ 
+ <div class="panel" id="editPanel" style="display:none">
+@@ -143,5 +149,52 @@ function applyFilters(){
+ document.addEventListener('input', e => {
+   if(e.target.classList && e.target.classList.contains('col-filter')) applyFilters();
+ });
++
++// ===== Сортировка журнала по столбцам =====
++let sortState = { col: null, dir: 1 }; // dir: 1 — по возрастанию, -1 — по убыванию
++
++// Ключ сравнения: числа извлекаются из текста и сравниваются как числа
++// (корректный порядок для дат ГГГГ-ММ-ДД и номеров вида «12а», «105»);
++// остальной текст сравнивается без учёта регистра.
++function sortKey(text){
++  const t = text.trim().toLowerCase().replace(/[\u25b2\u25bc]/g, '').trim();
++  return t.split(/(\d+)/).map(p => /^\d+$/.test(p) ? Number(p) : p);
++}
++
++function cmpKeys(a, b){
++  const n = Math.max(a.length, b.length);
++  for(let i = 0; i < n; i++){
++    const x = a[i], y = b[i];
++    if(x === undefined) return -1;
++    if(y === undefined) return 1;
++    if(typeof x === 'number' && typeof y === 'number'){ if(x !== y) return x - y; }
++    else if(typeof x === 'number'){ return 1; }   // цифры после букв («а» < «12»)
++    else if(typeof y === 'number'){ return -1; }
++    else { if(x !== y) return x < y ? -1 : 1; }
++  }
++  return 0;
++}
++
++function sortByColumn(th){
++  const table = document.getElementById('journalTable');
++  const col = +th.dataset.sortcol;
++  // повторный клик по тому же столбцу — обратный порядок
++  sortState.dir = (sortState.col === col) ? -sortState.dir : 1;
++  sortState.col = col;
++
++  const allRows = [...table.querySelectorAll('tr')].filter(tr =>
++    !tr.querySelector('th') && tr.children.length > 1);
++  const dataRows = allRows.filter(tr => !tr.classList.contains('empty-row'));
++  dataRows.sort((r1, r2) =>
++    sortState.dir * cmpKeys(sortKey(r1.children[col].textContent),
++                            sortKey(r2.children[col].textContent)));
++  const tbody = table.tBodies[0] || table;
++  dataRows.forEach(tr => tbody.appendChild(tr));
++
++  // индикаторы направления в заголовках
++  table.querySelectorAll('th.sortable .sort-ind').forEach(s => s.textContent = '');
++  const ind = th.querySelector('.sort-ind');
++  if(ind) ind.textContent = sortState.dir === 1 ? ' ▲' : ' ▼';
++}
+ </script>
+ {% endblock %}
+-- 
+2.39.5
+

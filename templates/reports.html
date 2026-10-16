@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Отчёты</h1>
+<div class="cards">
+  <a class="card" href="{{ url_for('report_by_period') }}">
+    <div class="card-title">1. Приказы за период</div>
+    <div class="card-sub">Вид приказа — количество приказов</div>
+  </a>
+  <a class="card" href="{{ url_for('report_by_period_detail') }}">
+    <div class="card-title">2. Приказы за период с расшифровкой</div>
+    <div class="card-sub">Вид приказа × наименование приказа</div>
+  </a>
+  <a class="card" href="{{ url_for('report_journal_print', journal='opeka') }}">
+    <div class="card-title">3. Распечатка журнала за период</div>
+    <div class="card-sub">Выборка по виду приказа</div>
+  </a>
+</div>
+{% endblock %}

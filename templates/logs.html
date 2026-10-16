@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Журнал логирования{% endblock %}
+{% block content %}
+<h1>📜 Журнал логирования</h1>
+<p class="muted no-print">
+  Файл журнала: <code>{{ log_file }}</code><br>
+  Ведётся с ротацией (до 5 файлов по 2 МБ). Записываются: запуск сервера,
+  входы/выходы, неудачные попытки входа, отказы в доступе, создание/изменение/удаление
+  приказов и справочников, резервные копии, восстановления, обновления и все HTTP-запросы.
+</p>
+
+<div class="toolbar no-print">
+  <form method="get" style="display:inline-flex;gap:8px;align-items:center">
+    <label>Показывать последние:</label>
+    <select name="n" onchange="this.form.submit()">
+      {% for opt in [50, 100, 200, 500, 1000, 2000] %}
+        <option value="{{ opt }}" {% if n == opt %}selected{% endif %}>{{ opt }} строк</option>
+      {% endfor %}
+    </select>
+    <noscript><button class="btn sm">Применить</button></noscript>
+  </form>
+  <a class="btn sm" href="{{ url_for('logs_view', n=n) }}">⟳ Обновить</a>
+  <a class="btn sm" href="{{ url_for('logs_download', file='app.log') }}">⬇ Скачать app.log</a>
+</div>
+
+<div class="toolbar no-print" style="border-top:1px solid #ddd;padding-top:8px">
+  <form method="post" action="{{ url_for('logs_clear') }}" style="display:inline-flex;gap:8px;align-items:center"
+        onsubmit="return confirm('Очистить журнал логирования? Текущий файл app.log будет обрезан.');">
+    <strong>🧹 Очистка журнала:</strong>
+    <select name="mode">
+      <option value="keep">С копией: сохранить резервную копию и очистить</option>
+      <option value="backup">Только копия: создать резервную копию, не очищая</option>
+      <option value="full">Полная очистка: без копии, удалить и архивы ротации</option>
+    </select>
+    <button class="btn sm danger" type="submit">Очистить</button>
+  </form>
+</div>
+
+{% if files|length > 1 %}
+<div class="no-print" style="margin-bottom:10px">
+  Архивные файлы журнала (ротация):
+  {% for f in files[1:] %}
+    <a class="btn sm" href="{{ url_for('logs_download', file=f) }}">⬇ {{ f }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="logbox">
+{% if lines %}
+  {% for l in lines %}<div class="logline {{ 'logwarn' if ('WARNING' in l or 'ОТКАЗ' in l or 'Неудачная' in l or '403' in l) else ('logerr' if ('ERROR' in l or 'НЕОБРАБОТАННАЯ' in l or 'Ошибка' in l) ) }}">{{ l }}</div>
+  {% endfor %}
+{% else %}
+  <em>Журнал пуст.</em>
+{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}Моя учётная запись{% endblock %}
+{% block content %}
+<h1>Моя учётная запись</h1>
+<div class="panel narrow">
+  <p><b>{{ cu.full_name }}</b><br>
+     Должность: {{ cu.position or '—' }}<br>
+     Роль: {{ cu.role_name }}<br>
+     Логин: {{ cu.login or '—' }}</p>
+  {% if cu.login %}
+  <h2>Смена пароля</h2>
+  <p class="muted">Вы можете в любой момент самостоятельно изменить свой пароль.
+     После смены войдите заново, если сессия завершится.</p>
+  <form method="post" autocomplete="off">
+    <label>Текущий пароль
+      <input type="password" name="old_password" required autocomplete="current-password"></label>
+    <label>Новый пароль (минимум 4 символа)
+      <input type="password" name="new_password" required minlength="4" autocomplete="new-password"></label>
+    <label>Подтверждение нового пароля
+      <input type="password" name="confirm_password" required minlength="4" autocomplete="new-password"></label>
+    <button class="btn primary">Изменить пароль</button>
+  </form>
+  {% if cu.pwd_changed_at %}
+  <p class="muted">Пароль последний раз изменялся: {{ cu.pwd_changed_at }}</p>
+  {% else %}
+  <p class="warn-note">⚠ Вы ещё не меняли пароль, установленный администратором. Рекомендуем сделать это сейчас.</p>
+  {% endif %}
+  {% else %}
+  <p class="muted">Для вашей учётной записи вход не настроен (логин не назначен).
+     Обратитесь к администратору.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,326 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Журнал «{{ title }}»</h1>
+
+<div class="panel">
+  <h2>➕ Новый приказ</h2>
+  <form method="post" action="{{ url_for('journal_create', journal=journal) }}" enctype="multipart/form-data">
+    <label>№ приказа <input name="order_number" placeholder="присвоится автоматически"></label>
+    <label>Дата приказа <input type="date" name="order_date" value="{{ today }}"></label>
+    <label>Наименование приказа
+      <select name="order_type_id" required>
+        <option value="">— выберите —</option>
+        {% for t in types %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Ф.И.О. в отношении кого приказ <input name="person_fio" required></label>
+    <label>ФИО специалиста <input name="specialist_fio" value="{{ cu.full_name if cu else '' }}"></label>
+    {% if has_reason %}{# журнал «Опека»: причина приказа берётся из справочника «Причины» #}
+    <label>Причина
+      <select name="reason_id">
+        <option value="">— не выбрана —</option>
+        {% for rs in reasons %}<option value="{{ rs.id }}">{{ rs.name }}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    <label>Примечание <input name="note" placeholder="необязательно"></label>
+    <label>Скан (PDF) <input type="file" name="scan" accept=".pdf,application/pdf"></label>
+    <button class="btn primary" type="submit">Зарегистрировать</button>
+  </form>
+</div>
+
+<div class="panel no-print">
+  <h2>📥 Загрузка приказов из Excel</h2>
+  <p class="hint">Файл .xlsx: первая строка — заголовки. Столбцы «№ приказа» и «Дата приказа» необязательны
+     (номер присвоится автоматически с суффиксом журнала, дата будет текущей). Дубликаты пропускаются;
+     сканы PDF после импорта прикладываются к приказам вручную.</p>
+  <form method="post" action="{{ url_for('journal_import', journal=journal) }}" enctype="multipart/form-data">
+    <label>Файл Excel (.xlsx) <input type="file" name="file" accept=".xlsx" required></label>
+    <button class="btn primary" type="submit">Импортировать</button>
+    <a class="btn" href="{{ url_for('journal_template', journal=journal) }}">⬇ Скачать шаблон</a>
+  </form>
+</div>
+
+<form method="get" class="searchbar no-print">
+  <input name="q" value="{{ q }}" placeholder="Поиск по номеру / ФИО…">
+  <button class="btn">Найти</button>
+  {% if q %}<a class="btn" href="{{ url_for('journal_list', journal=journal) }}">Сброс</a>{% endif %}
+  <span class="hint" id="filterCount"></span>
+</form>
+
+{# отбор по периоду: сохраняется отдельно для каждого пользователя #}
+<form method="get" class="periodbar no-print" id="periodForm">
+  {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+  <label>С даты <input type="date" name="d1" id="p_d1" value="{{ p1 or '' }}"></label>
+  <label>По дату <input type="date" name="d2" id="p_d2" value="{{ p2 or '' }}"></label>
+  <button class="btn" type="submit">📅 Применить период</button>
+  {% if p1 or p2 %}<a class="btn" href="{{ url_for('journal_list', journal=journal, q=q or '') }}">✕ Сбросить период</a>{% endif %}
+  <span class="hint">период сохраняется для вашего пользователя</span>
+</form>
+
+{# панель массового удаления: появляется при выделении строк чекбоксами #}
+<div class="bulkbar no-print" id="bulkBar" hidden>
+  <span>Выделено: <b id="selCount">0</b></span>
+  <button class="btn sm" type="button" onclick="selectAllRows(true)">Выделить все</button>
+  <button class="btn sm" type="button" onclick="selectAllRows(false)">Снять выделение</button>
+  <button class="btn sm danger" type="button" onclick="bulkDelete()">🗑 Удалить выделенные</button>
+</div>
+
+<form method="post" id="bulkForm" class="no-print" style="display:none"
+      action="{{ url_for('journal_delete_bulk', journal=journal) }}"
+      onsubmit="return confirmBulk(event)">
+  <input type="hidden" name="d1" value="{{ p1 or '' }}">
+  <input type="hidden" name="d2" value="{{ p2 or '' }}">
+  {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+</form>
+
+<table class="grid" id="journalTable">
+  {# заголовки: клик по столбцу — сортировка (по дате и номеру — с учётом числовых значений) #}
+  {% set headers = ['№ п/п','№ приказа','Дата','Наименование приказа','Ф.И.О. в отношении кого','ФИО специалиста'] + (['Причина'] if has_reason else []) + ['Примечание','Скан'] %}
+  <tr>
+    <th class="chk-col no-print"><input type="checkbox" id="chkAll" title="Выделить все строки"
+        onclick="toggleAllChecked(this.checked)"></th>
+    {% for h in headers %}
+    <th class="sortable" data-sortcol="{{ loop.index0 + 1 }}" onclick="sortByColumn(this)"
+        title="Сортировать по столбцу «{{ h }}»">{{ h }}<span class="sort-ind"></span></th>
+    {% endfor %}
+    <th class="no-print"></th>
+  </tr>
+  {# строка фильтрации-воронки для каждого столбца #}
+  <tr class="filter-row no-print">
+    <th class="no-print"></th>
+    {% for h in headers %}
+    <th class="filter-cell">
+      <span class="funnel" onclick="toggleFilter(this)" title="Фильтр по столбцу «{{ h }}»">⏷</span>
+      <input type="search" class="col-filter" data-col="{{ loop.index0 + 1 }}" placeholder="фильтр…" hidden>
+    </th>
+    {% endfor %}
+    <th class="no-print"></th>
+  </tr>
+  {% for r in rows %}
+  <tr{% if r.scan_path %} data-has-scan="1"{% endif %}>
+    <td class="chk-col no-print">
+      <input type="checkbox" class="row-check" value="{{ r.id }}"
+             data-number="{{ r.order_number }}" onchange="onRowCheckChange()">
+    </td>
+    <td>{{ loop.index }}</td>
+    <td>{{ r.order_number }}</td>
+    <td>{{ r.order_date }}</td>
+    <td>{{ r.type_name or '—' }}</td>
+    <td>{{ r.person_fio }}</td>
+    <td>{{ r.specialist_fio }}</td>
+    {% if has_reason %}<td class="reason-cell">{{ r.reason_name or '—' }}</td>{% endif %}
+    <td>{{ r.note if 'note' in r.keys() else '' }}</td>
+    <td>{% if r.scan_path %}<a href="{{ url_for('order_scan', oid=r.id) }}" target="_blank">📄 PDF</a>{% else %}—{% endif %}</td>
+    <td class="actions no-print">
+      <button class="btn sm" data-id="{{ r.id }}" data-number="{{ r.order_number }}" data-date="{{ r.order_date }}"
+              data-typeid="{{ r.order_type_id or '' }}" data-person="{{ r.person_fio }}" data-spec="{{ r.specialist_fio }}"
+              data-note="{{ r.note if 'note' in r.keys() else '' }}"
+              {% if has_reason %}data-reasonid="{{ r.reason_id or '' }}" data-reason="{{ r.reason_name or '' }}"{% endif %}
+              onclick="openEdit(this)">✏️ Изменить</button>
+      <form method="post" action="{{ url_for('order_delete', oid=r.id) }}" style="display:inline"
+            onsubmit="return confirm('Удалить приказ?')"><button class="btn sm danger">🗑</button></form>
+    </td>
+  </tr>
+  {% endfor %}
+  {% if not rows %}<tr class="empty-row"><td colspan="{{ 9 + (1 if has_reason else 0) }}" class="empty">Нет записей</td></tr>{% endif %}
+</table>
+
+<div class="panel" id="editPanel" style="display:none">
+  <h2>Редактирование приказа № <span id="editNumTitle"></span></h2>
+  <form method="post" id="editForm" enctype="multipart/form-data">
+    <label>№ приказа <input name="order_number" id="e_num"></label>
+    <label>Дата <input type="date" name="order_date" id="e_date"></label>
+    <label>Наименование приказа
+      <select name="order_type_id" id="e_type">
+        <option value="">— не выбран —</option>
+        {% for t in types %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Ф.И.О. в отношении кого <input name="person_fio" id="e_person"></label>
+    <label>ФИО специалиста <input name="specialist_fio" id="e_spec"></label>
+    {% if has_reason %}{# журнал «Опека»: причина из справочника «Причины» #}
+    <label>Причина
+      <select name="reason_id" id="e_reason">
+        <option value="">— не выбрана —</option>
+        {% for rs in reasons %}<option value="{{ rs.id }}">{{ rs.name }}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    <label>Примечание <input name="note" id="e_note"></label>
+    <label>Заменить скан (PDF) <input type="file" name="scan" accept=".pdf,application/pdf"></label>
+    <button class="btn primary">Сохранить</button>
+    <button class="btn" type="button" onclick="document.getElementById('editPanel').style.display='none'">Отмена</button>
+  </form>
+</div>
+
+<script>
+function openEdit(b){
+  const d = b.dataset;
+  document.getElementById('editForm').action = '/order/' + d.id + '/update';
+  document.getElementById('e_num').value = d.number;
+  document.getElementById('e_date').value = d.date;
+  document.getElementById('e_person').value = d.person || '';
+  document.getElementById('e_spec').value = d.spec || '';
+  document.getElementById('e_note').value = d.note || '';
+  document.getElementById('e_type').value = d.typeid || '';
+  const eReason = document.getElementById('e_reason');
+  if(eReason){
+    // выбор причины из справочника; если у приказа причина вне списка — добавляем её
+    let val = d.reasonid || '';
+    if(val && ![...eReason.options].some(o => o.value === val)){
+      const o = new Option(d.reason, val, false, true);
+      eReason.add(o);
+    }
+    eReason.value = val;
+  }
+  document.getElementById('editNumTitle').textContent = d.number;
+  document.getElementById('editPanel').style.display = 'block';
+  document.getElementById('editPanel').scrollIntoView({behavior:'smooth'});
+}
+
+// ===== Фильтрация журнала по столбцам (воронки) =====
+function toggleFilter(f){
+  const inp = f.parentElement.querySelector('.col-filter');
+  inp.hidden = !inp.hidden;
+  if(!inp.hidden) inp.focus();
+  else { inp.value=''; applyFilters(); }
+}
+
+function applyFilters(){
+  const table = document.getElementById('journalTable');
+  const filters = [...document.querySelectorAll('#journalTable .col-filter')]
+    .filter(i => i.value.trim());
+  let shown = 0;
+  table.querySelectorAll('tbody tr, tr:not(.filter-row)').forEach(tr => {
+    if(tr.querySelector('th') || tr.classList.contains('filter-row')) return; // строка заголовков
+    const cells = tr.children;
+    let visible = true;
+    for(const f of filters){
+      const c = cells[+f.dataset.col];
+      const text = (c ? c.textContent : '').toLowerCase();
+      if(!text.includes(f.value.trim().toLowerCase())){ visible = false; break; }
+    }
+    tr.style.display = visible ? '' : 'none';
+    if(visible && cells.length > 1) shown++;
+  });
+  const cnt = document.getElementById('filterCount');
+  if(cnt) cnt.textContent = filters.length ? ('Показано строк: ' + shown) : '';
+}
+
+document.addEventListener('input', e => {
+  if(e.target.classList && e.target.classList.contains('col-filter')) applyFilters();
+});
+
+// ===== Сортировка журнала по столбцам =====
+let sortState = { col: null, dir: 1 }; // dir: 1 — по возрастанию, -1 — по убыванию
+
+// Ключ сравнения: числа извлекаются из текста и сравниваются как числа
+// (корректный порядок для дат ГГГГ-ММ-ДД и номеров вида «12а», «105»);
+// остальной текст сравнивается без учёта регистра.
+function sortKey(text){
+  const t = text.trim().toLowerCase().replace(/[\u25b2\u25bc]/g, '').trim();
+  return t.split(/(\d+)/).map(p => /^\d+$/.test(p) ? Number(p) : p);
+}
+
+function cmpKeys(a, b){
+  const n = Math.max(a.length, b.length);
+  for(let i = 0; i < n; i++){
+    const x = a[i], y = b[i];
+    if(x === undefined) return -1;
+    if(y === undefined) return 1;
+    if(typeof x === 'number' && typeof y === 'number'){ if(x !== y) return x - y; }
+    else if(typeof x === 'number'){ return 1; }   // цифры после букв («а» < «12»)
+    else if(typeof y === 'number'){ return -1; }
+    else { if(x !== y) return x < y ? -1 : 1; }
+  }
+  return 0;
+}
+
+function sortByColumn(th){
+  const table = document.getElementById('journalTable');
+  const col = +th.dataset.sortcol;
+  // повторный клик по тому же столбцу — обратный порядок
+  sortState.dir = (sortState.col === col) ? -sortState.dir : 1;
+  sortState.col = col;
+
+  const allRows = [...table.querySelectorAll('tr')].filter(tr =>
+    !tr.querySelector('th') && tr.children.length > 1);
+  const dataRows = allRows.filter(tr => !tr.classList.contains('empty-row'));
+  dataRows.sort((r1, r2) =>
+    sortState.dir * cmpKeys(sortKey(r1.children[col].textContent),
+                            sortKey(r2.children[col].textContent)));
+  const tbody = table.tBodies[0] || table;
+  dataRows.forEach(tr => tbody.appendChild(tr));
+
+  // индикаторы направления в заголовках
+  table.querySelectorAll('th.sortable .sort-ind').forEach(s => s.textContent = '');
+  const ind = th.querySelector('.sort-ind');
+  if(ind) ind.textContent = sortState.dir === 1 ? ' ▲' : ' ▼';
+}
+
+// ===== Выделение строк и массовое удаление =====
+function visibleRowChecks(){
+  return [...document.querySelectorAll('#journalTable .row-check')]
+    .filter(cb => cb.closest('tr').style.display !== 'none');
+}
+
+function checkedRows(){
+  return visibleRowChecks().filter(cb => cb.checked);
+}
+
+function updateBulkBar(){
+  const n = checkedRows().length;
+  const bar = document.getElementById('bulkBar');
+  const cnt = document.getElementById('selCount');
+  if(cnt) cnt.textContent = n;
+  if(bar) bar.hidden = (n === 0);
+  const all = visibleRowChecks();
+  const chkAll = document.getElementById('chkAll');
+  if(chkAll) chkAll.checked = all.length > 0 && n === all.length;
+  // подсветка выделенных строк
+  document.querySelectorAll('#journalTable tbody tr, #journalTable tr').forEach(tr => {
+    const cb = tr.querySelector && tr.querySelector('.row-check');
+    if(cb) tr.classList.toggle('selected', cb.checked);
+  });
+}
+
+function onRowCheckChange(){ updateBulkBar(); }
+
+function toggleAllChecked(v){
+  visibleRowChecks().forEach(cb => cb.checked = v);
+  updateBulkBar();
+}
+
+function selectAllRows(v){ toggleAllChecked(v); }
+
+function bulkDelete(){
+  const sel = checkedRows();
+  if(!sel.length){ alert('Сначала выделите приказы (чекбоксы слева от строк).'); return; }
+  const form = document.getElementById('bulkForm');
+  form.querySelectorAll('input[name="ids"]').forEach(i => i.remove());
+  for(const cb of sel){
+    const i = document.createElement('input');
+    i.type = 'hidden'; i.name = 'ids'; i.value = cb.value;
+    form.appendChild(i);
+  }
+  form.requestSubmit(); // сработает onsubmit -> confirmBulk
+}
+
+let bulkConfirmed = false;
+function confirmBulk(ev){
+  if(bulkConfirmed){ bulkConfirmed = false; return true; } // повторный submit — без подтверждения
+  ev.preventDefault();
+  const sel = checkedRows();
+  const nums = sel.slice(0, 5).map(cb => cb.dataset.number).join(', ');
+  const more = sel.length > 5 ? ' …' : '';
+  const scans = sel.filter(cb => cb.closest('tr').dataset.hasScan).length;
+  let msg = `Удалить выделенные приказы (${sel.length}): ${nums}${more}?`;
+  if(scans) msg += `\nВнимание: у ${scans} из них будут удалены и файлы сканов.`;
+  if(confirm(msg)){ bulkConfirmed = true; document.getElementById('bulkForm').requestSubmit(); }
+  return false;
+}
+
+updateBulkBar();
+</script>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="no-print">
+  <form method="get" class="period-form" id="periodForm">
+    {% if extra_args %}{% for k,v in extra_args.items() %}<input type="hidden" name="{{k}}" value="{{v}}">{% endfor %}{% endif %}
+    <label>Дата начала <input type="date" name="d1" value="{{ d1 }}"></label>
+    <label>Дата окончания <input type="date" name="d2" value="{{ d2 }}"></label>
+    <button class="btn primary">Сформировать</button>
+    {% if extra_args %}
+    <label>Вид приказа (журнал):
+      <select name="journal_sel" onchange="this.form.journal.value=this.value;">
+        {% for j,t in all_journals %}<option value="{{j}}" {% if extra_args.journal==j %}selected{% endif %}>{{t}}</option>{% endfor %}
+      </select>
+    {% endif %}
+  </form>
+  <div class="toolbar">
+    <button class="btn" onclick="window.print()">🖨 Печать</button>
+    <a class="btn" href="?d1={{ d1 }}&d2={{ d2 }}{% if extra_args %}{% for k,v in extra_args.items() %}&{{k}}={{v}}{% endfor %}{% endif %}&fmt=xlsx">⬇ Excel</a>
+    <a class="btn" href="?d1={{ d1 }}&d2={{ d2 }}{% if extra_args %}{% for k,v in extra_args.items() %}&{{k}}={{v}}{% endfor %}{% endif %}&fmt=docx">⬇ Word</a>
+    <a class="btn" href="{{ url_for('reports') }}">← К отчётам</a>
+  </div>
+</div>
+
+<div class="printable">
+  <h1 class="rep-title">{{ title }}</h1>
+  <p class="rep-period">Период: <b>с {{ d1 }}</b> по <b>{{ d2 }}</b></p>
+  <table class="grid bordered">
+    <tr>{% for h in headers %}<th>{{ h }}</th>{% endfor %}</tr>
+    {% for row in rows %}
+    <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+    {% else %}
+    <tr><td colspan="{{ headers|length }}" class="empty">Нет данных за период</td></tr>
+    {% endfor %}
+    {% if total is defined and rows %}<tr class="totalrow"><td colspan="{{ headers|length - 1 if headers|length > 2 else 1 }}"><b>Итого</b></td><td><b>{{ total }}</b></td></tr>{% endif %}
+  </table>
+  <p class="rep-date no-sel">Отчёт сформирован: {{ now_s if now_s else '' }}</p>
+</div>
+{% endblock %}

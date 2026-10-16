@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Регистрация приказов по видам деятельности</h1>
+<div class="cards">
+  {% for j, t in accessible_journals %}
+  <a class="card" href="{{ url_for('journal_list', journal=j) }}">
+    <div class="card-title">Журнал «{{ t }}»</div>
+    <div class="card-num">{{ stats.get(j, 0) }}</div>
+    <div class="card-sub">приказов зарегистрировано</div>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}
