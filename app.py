@@ -80,7 +80,7 @@ def find_free_port(start):
                 continue
     return None
 
-APP_VERSION = '1.5.7'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
+APP_VERSION = '1.5.8'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
 # 1.2.0 — поле «Примечание» во всех приказах + загрузка сотрудников и видов приказов из Excel
 # 1.2.1 — куратору разрешено редактирование справочника «Виды приказов»
 # 1.2.2 — панель загрузки приказов в журналы из Excel + подробное описание обновления программы
@@ -119,6 +119,12 @@ APP_VERSION = '1.5.7'  # 1.5.0 — клиентское приложение; 1.
 #         импорт причин идемпотентен (повторы пропускаются), реактивация
 #         hidden-дубликата вместо создания нового; на вкладке «Справочники →
 #         Причины» — счётчик повторов и переключатель «Показать повторы»
+# 1.5.8 — причины у каждого вида приказа свои, при этом одно и то же
+#         наименование может использоваться в нескольких видах приказов
+#         (например, «Смерть» для Опеки и Нуждаемости): из таблицы «Причины»
+#         снято ограничение UNIQUE(name) (миграция пересоздаёт таблицу без
+#         него с сохранением id и связей приказов); проверка дублей при
+#         ручном вводе и через API — только в рамках своего вида приказа
 
 
 def setup_logging():
@@ -268,7 +274,7 @@ def _get_or_create_reason(conn, name, journal=None):
             'SELECT r.id FROM reasons r '
             'LEFT JOIN orders o ON o.reason_id=r.id '
             'WHERE LOWER(TRIM(r.name))=? AND r.journal=? '
-            'ORDER BY r.active DESC, COUNT(o.id) DESC, r.id ASC LIMIT 1',
+            'GROUP BY r.id ORDER BY r.active DESC, COUNT(o.id) DESC, r.id ASC LIMIT 1',
             (name.lower(), journal)).fetchone()
         if row:
             return row['id']
@@ -277,7 +283,7 @@ def _get_or_create_reason(conn, name, journal=None):
             'SELECT r.id FROM reasons r '
             'LEFT JOIN orders o ON o.reason_id=r.id '
             'WHERE LOWER(TRIM(r.name))=? '
-            'ORDER BY r.active DESC, COUNT(o.id) DESC, r.id ASC LIMIT 1',
+            'GROUP BY r.id ORDER BY r.active DESC, COUNT(o.id) DESC, r.id ASC LIMIT 1',
             (name.lower(),)).fetchone()
         if row:
             return row['id']
@@ -668,11 +674,57 @@ CREATE TABLE IF NOT EXISTS user_prefs (
 """
 
 
+def _drop_reasons_unique_index(conn):
+    """Убрать ограничение UNIQUE(name) из таблицы reasons (v1.5.8).
+
+    В старых базах таблица «Причины» создавалась с ограничением
+    UNIQUE(name) (sqlite_autoindex), которое запрещало одинаковые
+    наименования в разных видах приказов (например, «Смерть» для Опеки
+    и для Нуждаемости). Пересоздаём таблицу без этого ограничения,
+    сохраняя id записей и связи приказов (orders.reason_id).
+    """
+    info = conn.execute('SELECT sql FROM sqlite_master WHERE type=\'table\' '
+                        'AND name=\'reasons\'').fetchone()
+    if not info or not info['sql'] or 'UNIQUE' not in info['sql'].upper():
+        return
+    cols = [c['name'] for c in conn.execute('PRAGMA table_info(reasons)')]
+    if 'journal' not in cols:      # колонки добавляются миграцией v1.5.6 ниже
+        conn.execute('ALTER TABLE reasons ADD COLUMN journal TEXT')
+    if 'active' not in cols:       # колонка помечается миграцией v1.5.7 ниже
+        conn.execute('ALTER TABLE reasons ADD COLUMN active INTEGER NOT NULL DEFAULT 1')
+    sel_cols = ', '.join(
+        c if c in ('id', 'name', 'journal', 'active') else 'NULL'
+        for c in ['id', 'name', 'journal', 'active'])
+    conn.execute('PRAGMA foreign_keys = OFF')
+    try:
+        conn.executescript(
+            'BEGIN;\n'
+            'CREATE TABLE reasons_new (\n'
+            '    id INTEGER PRIMARY KEY AUTOINCREMENT,\n'
+            '    name TEXT NOT NULL,\n'
+            '    journal TEXT,\n'
+            '    active INTEGER NOT NULL DEFAULT 1\n'
+            ');\n'
+            f'INSERT INTO reasons_new(id, name, journal, active) SELECT {sel_cols} FROM reasons;\n'
+            'DROP TABLE reasons;\n'
+            'ALTER TABLE reasons_new RENAME TO reasons;\n'
+            'COMMIT;')
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.execute('PRAGMA foreign_keys = ON')
+
+
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     os.makedirs(ARCHIVE_DIR, exist_ok=True)
     conn = get_db()
+    # Миграция v1.5.8: причины могут повторяться в разных видах приказов —
+    # сначала снимаем ограничение UNIQUE(name) со старых баз (до executescript,
+    # чтобы seed-заполнение причин не падало на IntegrityError)
+    _drop_reasons_unique_index(conn)
     conn.executescript(SCHEMA)
     # Миграция: добавляем колонку pwd_changed_at в существующих базах
     cols = [c['name'] for c in conn.execute('PRAGMA table_info(employees)')]
@@ -2699,8 +2751,10 @@ def api_reasons():
                                     (int(rid),)).fetchone():
                     conn.close(); abort(404)
                 dup = conn.execute(
-                    'SELECT 1 FROM reasons WHERE LOWER(TRIM(name))=? AND id<>?',
-                    (name.lower(), int(rid))).fetchone()
+                    'SELECT 1 FROM reasons WHERE LOWER(TRIM(name))=? AND id<>? '
+                    "AND COALESCE(journal, ?)=?",
+                    (name.lower(), int(rid), journal or 'opeka',
+                     journal or 'opeka')).fetchone()
                 if dup:
                     conn.close()
                     return api_json({'error': 'Такая причина уже существует'}, 400)
