@@ -31,14 +31,14 @@
 
 <div class="panel no-print">
   <h2>📥 Загрузка приказов из Excel</h2>
-  <p class="hint">Файл .xlsx: первая строка — заголовки. Столбцы «№ приказа» и «Дата приказа» необязательны
+  <p class="hint">Массовая загрузка документов перенесена в меню администратора:
+     <a href="{{ url_for('service') }}">Сервис → Загрузка документов из Excel</a>
+     (с разделением по видам приказов). Здесь доступны только шаблоны:
+     первая строка файла — заголовки. Столбцы «№ приказа» и «Дата приказа» необязательны
      (номер присвоится автоматически с суффиксом журнала, дата будет текущей). Дубликаты пропускаются;
      сканы PDF после импорта прикладываются к приказам вручную.</p>
-  <form method="post" action="{{ url_for('journal_import', journal=journal) }}" enctype="multipart/form-data">
-    <label>Файл Excel (.xlsx) <input type="file" name="file" accept=".xlsx" required></label>
-    <button class="btn primary" type="submit">Импортировать</button>
-    <a class="btn" href="{{ url_for('journal_template', journal=journal) }}">⬇ Скачать шаблон</a>
-  </form>
+  <a class="btn" href="{{ url_for('journal_template', journal=journal) }}">⬇ Скачать шаблон</a>
+  <a class="btn" href="{{ url_for('service') }}#excel-import">🛠 Загрузить Excel в сервисе</a>
 </div>
 
 <form method="get" class="searchbar no-print">
