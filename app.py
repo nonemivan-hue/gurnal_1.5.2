@@ -79,7 +79,7 @@ def find_free_port(start):
                 continue
     return None
 
-APP_VERSION = '1.5.2'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
+APP_VERSION = '1.5.3'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
 # 1.2.0 — поле «Примечание» во всех приказах + загрузка сотрудников и видов приказов из Excel
 # 1.2.1 — куратору разрешено редактирование справочника «Виды приказов»
 # 1.2.2 — панель загрузки приказов в журналы из Excel + подробное описание обновления программы
@@ -97,6 +97,9 @@ APP_VERSION = '1.5.2'  # 1.5.0 — клиентское приложение; 1.
 #         справочник «Причины» + поле «Причина» в журнале «Опека»; новая логика отчёта
 #         «Распечатка журнала за период» (печать / Excel / Word, выборка по виду приказа,
 #         для «Опеки» наименование + причина в скобках)
+# 1.5.3 — загрузка документов из Excel перенесена в меню администратора «Сервис»
+#         с разделением по видам приказов (Опека / Нуждаемость / Профилактика);
+#         импорты справочников сотрудников и видов приказов — там же
 
 
 def setup_logging():
@@ -1027,6 +1030,36 @@ def _read_xlsx_rows(stream):
     return [r for r in rows if any(r)]
 
 
+def _service_redirect():
+    """URL страницы «Сервис» с якорем раздела загрузки документов из Excel."""
+    return url_for('service', _external=True) + '#excel-import'
+
+
+def _redirect_back(default_endpoint, back_to_service=False, **defaults):
+    """Вернуться на страницу, откуда был вызван импорт (например, «Сервис»),
+    иначе — на указанный запасной адрес.
+
+    При back_to_service=True возврат на собственную страницу справочника
+    не выполняется (панели загрузки оттуда перенесены в сервис) — вместо
+    этого пользователь попадает на «Сервис → Загрузка документов из Excel».
+    """
+    ref = request.referrer or ''
+    try:
+        same_site = urlparse(ref).netloc == urlparse(request.url).netloc
+    except Exception:
+        same_site = False
+    ep = url_for(default_endpoint, **defaults)
+    if ref and same_site and urlparse(ref).path == ep:
+        if back_to_service:
+            return redirect(_service_redirect())
+        return redirect(url_for(default_endpoint, **defaults))
+    if ref and same_site and urlparse(ref).path not in ('/', '/login'):
+        return redirect(ref)
+    if back_to_service:
+        return redirect(_service_redirect())
+    return redirect(url_for(default_endpoint, **defaults))
+
+
 def _mem_xlsx(wb, filename):
     buf = io.BytesIO()
     wb.save(buf)
@@ -1068,15 +1101,15 @@ def employees_import():
     f = request.files.get('file')
     if not f or not f.filename.lower().endswith('.xlsx'):
         flash('Выберите файл Excel в формате .xlsx', 'err')
-        return redirect(url_for('employees'))
+        return _redirect_back('employees', back_to_service=True)
     try:
         rows = _read_xlsx_rows(io.BytesIO(f.read()))
     except Exception as e:
         flash(f'Не удалось прочитать файл: {e}', 'err')
-        return redirect(url_for('employees'))
+        return _redirect_back('employees', back_to_service=True)
     if len(rows) < 2:
         flash('В файле нет данных (нужны заголовок и хотя бы одна строка)', 'err')
-        return redirect(url_for('employees'))
+        return _redirect_back('employees', back_to_service=True)
     m = _cell_map(rows[0])
     ci_fio = _pick(m, 'фиосотрудника', 'фио', 'фамилияимяотчество', 'сотрудник')
     ci_pos = _pick(m, 'должность')
@@ -1085,7 +1118,7 @@ def employees_import():
     ci_pw = _pick(m, 'пароль', 'password')
     if ci_fio is None:
         flash('В файле не найден столбец «ФИО сотрудника»', 'err')
-        return redirect(url_for('employees'))
+        return _redirect_back('employees', back_to_service=True)
     conn = get_db()
     roles = {r['name']: r['id'] for r in conn.execute('SELECT id, name FROM roles')}
     created = updated = skipped = 0
@@ -1144,7 +1177,7 @@ def employees_import():
     if errors:
         msg += '. Замечания: ' + '; '.join(errors[:5])
     flash(msg, 'ok')
-    return redirect(url_for('employees'))
+    return _redirect_back('employees', back_to_service=True)
 
 
 @app.route('/order_types/template')
@@ -1179,21 +1212,21 @@ def order_types_import():
     f = request.files.get('file')
     if not f or not f.filename.lower().endswith('.xlsx'):
         flash('Выберите файл Excel в формате .xlsx', 'err')
-        return redirect(url_for('order_types'))
+        return _redirect_back('order_types', back_to_service=True)
     try:
         rows = _read_xlsx_rows(io.BytesIO(f.read()))
     except Exception as e:
         flash(f'Не удалось прочитать файл: {e}', 'err')
-        return redirect(url_for('order_types'))
+        return _redirect_back('order_types', back_to_service=True)
     if len(rows) < 2:
         flash('В файле нет данных (нужны заголовок и хотя бы одна строка)', 'err')
-        return redirect(url_for('order_types'))
+        return _redirect_back('order_types', back_to_service=True)
     m = _cell_map(rows[0])
     ci_kind = _pick(m, 'видприказа', 'вид', 'журнал')
     ci_name = _pick(m, 'наименованиеприказа', 'наименование', 'приказ')
     if ci_kind is None or ci_name is None:
         flash('В файле не найдены столбцы «Вид приказа» и «Наименование приказа»', 'err')
-        return redirect(url_for('order_types'))
+        return _redirect_back('order_types', back_to_service=True)
     # карта: название журнала (в любом регистре) -> ключ журнала
     title_to_key = {t.lower(): k for k, t in JOURNAL_TITLES.items()}
     conn = get_db()
@@ -1221,7 +1254,7 @@ def order_types_import():
     if errors:
         msg += '. Замечания: ' + '; '.join(errors[:5])
     flash(msg, 'ok')
-    return redirect(url_for('order_types'))
+    return _redirect_back('order_types', back_to_service=True)
 
 
 # ---------------------------------------------------------------- журналы
@@ -1499,15 +1532,15 @@ def journal_import(journal):
     f = request.files.get('file')
     if not f or not f.filename.lower().endswith('.xlsx'):
         flash('Выберите файл Excel в формате .xlsx', 'err')
-        return redirect(url_for('journal_list', journal=journal))
+        return _redirect_back('journal_list', journal=journal)
     try:
         rows = _read_xlsx_rows(io.BytesIO(f.read()))
     except Exception as e:
         flash(f'Не удалось прочитать файл: {e}', 'err')
-        return redirect(url_for('journal_list', journal=journal))
+        return _redirect_back('journal_list', journal=journal)
     if len(rows) < 2:
         flash('В файле нет данных (нужны заголовок и хотя бы одна строка)', 'err')
-        return redirect(url_for('journal_list', journal=journal))
+        return _redirect_back('journal_list', journal=journal)
     m = _cell_map(rows[0])
     ci_num = _pick(m, '№приказа', 'нприказа', 'номерприказа', 'номер', 'num')
     ci_date = _pick(m, 'датаприказа', 'дата', 'date')
@@ -1522,7 +1555,7 @@ def journal_import(journal):
                  if REASONS_ENABLED.get(journal) else None)
     if ci_name is None and ci_person is None:
         flash('В файле не найдены столбцы «Наименование приказа» / «Ф.И.О. в отношении кого»', 'err')
-        return redirect(url_for('journal_list', journal=journal))
+        return _redirect_back('journal_list', journal=journal)
     title_to_key = {t.lower(): k for k, t in JOURNAL_TITLES.items()}
     today = date.today().isoformat()
     conn = get_db()
@@ -1627,7 +1660,7 @@ def journal_import(journal):
     if errors:
         msg += '. Замечания: ' + '; '.join(errors[:8])
     flash(msg, 'ok')
-    return redirect(url_for('journal_list', journal=journal))
+    return _redirect_back('journal_list', journal=journal)
 
 
 def _parse_order_filename(fname):
@@ -2782,7 +2815,19 @@ def service():
                                  'size': f"{os.path.getsize(p)/1024:.0f} КБ",
                                  'date': datetime.fromtimestamp(os.path.getmtime(p))
                                          .strftime('%d.%m.%Y %H:%M')})
-    return render_template('service.html', archives=archives)
+    # данные для раздела «Загрузка документов из Excel» (v1.5.3):
+    # справочники + виды приказов (журналы) с количеством наименований
+    conn = get_db()
+    types_by_journal = {}
+    for j in JOURNAL_TYPES:
+        cnt = conn.execute('SELECT COUNT(*) c FROM order_types WHERE kind=?',
+                           (j,)).fetchone()['c']
+        types_by_journal[j] = {'title': JOURNAL_TITLES[j], 'count': cnt}
+    employees_n = conn.execute('SELECT COUNT(*) c FROM employees').fetchone()['c']
+    conn.close()
+    return render_template('service.html', archives=archives,
+                           journals=JOURNAL_TYPES, journal_titles=JOURNAL_TITLES,
+                           types_by_journal=types_by_journal, employees_n=employees_n)
 
 
 @app.route('/service/backup', methods=['POST'])
