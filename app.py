@@ -202,38 +202,73 @@ JOURNAL_SUFFIX = {  # суффикс номера приказа по умолч
     'nuzhdaemost': '-ну',
     'profilaktika': '-пр',
 }
-# Журнал, в котором у приказа есть поле «Причина» (данные — из справочника «Причины»)
-REASON_JOURNAL = 'opeka'
-REASONS_ENABLED = {j: (j == REASON_JOURNAL) for j in JOURNAL_TYPES}
-# Начальные значения справочника «Причины» (заполняется также при импорте Excel)
-REASON_DEMO = [
-    'Заявление гражданина',
-    'Выявление органом опеки и попечительства',
-    'Направление медицинской организации',
-    'Решение суда',
-    'Заявление законного представителя',
-]
+# Поле «Причина» есть во всех журналах (Опека / Нуждаемость / Профилактика);
+# данные — из справочника «Причины», который разделён по видам приказов (v1.5.6)
+REASONS_ENABLED = {j: True for j in JOURNAL_TYPES}
+REASON_JOURNALS = list(JOURNAL_TYPES)          # все виды приказов с полем «Причина»
+# Начальные значения справочника «Причины» по видам приказов
+# (заполняется также при импорте Excel; ключ — журнал, значение — список причин)
+REASON_DEMO_BY_JOURNAL = {
+    'opeka': [
+        'Заявление гражданина',
+        'Выявление органом опеки и попечительства',
+        'Направление медицинской организации',
+        'Решение суда',
+        'Заявление законного представителя',
+    ],
+    'nuzhdaemost': [
+        'Заявление гражданина',
+        'Сведения органа опеки и попечительства',
+        'Представление организации обслуживания',
+        'Решение комиссии',
+    ],
+    'profilaktika': [
+        'Выявление категории граждан, подверженных риску',
+        'Межведомственное взаимодействие',
+        'Обращение гражданина или законного представителя',
+        'Сообщение образовательной организации',
+        'Предписание органа системы профилактики',
+    ],
+}
+# Плоский список — используется шаблоном Excel (историческое имя сохранено)
+REASON_DEMO = REASON_DEMO_BY_JOURNAL['opeka']
 
 
-def _get_or_create_reason(conn, name):
+def _get_or_create_reason(conn, name, journal=None):
     """Идентификатор причины по наименованию из справочника «Причины».
 
-    Пустое значение -> None. Неизвестное наименование регистрируется в
-    справочнике автоматически (как это сделано для видов приказов).
+    Причины разделены по видам приказов: поиск и регистрация выполняются
+    в рамках журнала (journal — ключ журнала, напр. 'opeka'); без журнала
+    причина ищется в любом виде. Пустое значение -> None. Неизвестное
+    наименование регистрируется в справочнике автоматически (как это
+    сделано для видов приказов).
     """
     name = _norm(name or '')
     if not name:
         return None
-    row = conn.execute('SELECT id FROM reasons WHERE LOWER(TRIM(name))=?',
-                       (name.lower(),)).fetchone()
-    if row:
-        return row['id']
-    try:
-        cur = conn.execute('INSERT INTO reasons(name) VALUES (?)', (name,))
-        return cur.lastrowid
-    except sqlite3.IntegrityError:
+    journal = journal if journal in JOURNAL_TYPES else None
+    if journal:
+        row = conn.execute('SELECT id FROM reasons WHERE LOWER(TRIM(name))=? AND journal=?',
+                           (name.lower(), journal)).fetchone()
+        if row:
+            return row['id']
+    else:
         row = conn.execute('SELECT id FROM reasons WHERE LOWER(TRIM(name))=?',
                            (name.lower(),)).fetchone()
+        if row:
+            return row['id']
+    try:
+        cur = conn.execute('INSERT INTO reasons(name, journal) VALUES (?,?)',
+                           (name, journal))
+        return cur.lastrowid
+    except sqlite3.IntegrityError:
+        if journal:
+            row = conn.execute(
+                'SELECT id FROM reasons WHERE LOWER(TRIM(name))=? AND journal=?',
+                (name.lower(), journal)).fetchone()
+        else:
+            row = conn.execute('SELECT id FROM reasons WHERE LOWER(TRIM(name))=?',
+                               (name.lower(),)).fetchone()
         return row['id'] if row else None
 
 
@@ -570,7 +605,8 @@ CREATE TABLE IF NOT EXISTS order_types (
 );
 CREATE TABLE IF NOT EXISTS reasons (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE NOT NULL        -- справочник «Причины» (заполняется при импорте из Excel)
+    name TEXT NOT NULL,              -- справочник «Причины» (заполняется при импорте из Excel)
+    journal TEXT                     -- вид приказа, к которому относится причина (v1.5.6)
 );
 CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -624,9 +660,15 @@ def init_db():
     tcols = [c['name'] for c in conn.execute('PRAGMA table_info(order_types)')]
     if 'prefix' not in tcols:
         conn.execute("ALTER TABLE order_types ADD COLUMN prefix TEXT NOT NULL DEFAULT ''")
-    # Миграция: колонка reason_id (причина приказа, журнал «Опека») + справочник «Причины»
+    # Миграция: колонка reason_id (причина приказа) + справочник «Причины»
     if 'reason_id' not in ocols:
         conn.execute('ALTER TABLE orders ADD COLUMN reason_id INTEGER REFERENCES reasons(id)')
+    # Миграция v1.5.6: причины разделены по видам приказов — колонка journal в
+    # справочнике «Причины»; старые общие причины относятся к журналу «Опека»
+    rcols = [c['name'] for c in conn.execute('PRAGMA table_info(reasons)')]
+    if 'journal' not in rcols:
+        conn.execute('ALTER TABLE reasons ADD COLUMN journal TEXT')
+        conn.execute("UPDATE reasons SET journal='opeka' WHERE journal IS NULL")
     # seed roles
     for r in ALL_ROLES:
         conn.execute('INSERT OR IGNORE INTO roles(name) VALUES (?)', (r,))
@@ -656,12 +698,15 @@ def init_db():
             for n in names:
                 conn.execute('INSERT OR IGNORE INTO order_types(kind,name) VALUES (?,?)',
                              (kind, n))
-    # seed справочника «Причины» (поле «Причина» журнала «Опека») — только при пустом
-    # справочнике; значения также добавляются автоматически при импорте Excel
+    # seed справочника «Причины» (поле «Причина» журналов) — только при пустом
+    # справочнике; значения также добавляются автоматически при импорте Excel.
+    # Причины разделены по видам приказов (v1.5.6)
     rseeded = conn.execute('SELECT COUNT(*) c FROM reasons').fetchone()['c']
     if rseeded == 0:
-        for rn in REASON_DEMO:
-            conn.execute('INSERT OR IGNORE INTO reasons(name) VALUES (?)', (rn,))
+        for j, names in REASON_DEMO_BY_JOURNAL.items():
+            for rn in names:
+                conn.execute('INSERT INTO reasons(name, journal) VALUES (?,?)',
+                             (rn, j))
     for j in JOURNAL_TYPES:
         conn.execute('INSERT OR IGNORE INTO counters(journal,value) VALUES (?,0)', (j,))
     conn.commit()
@@ -943,10 +988,12 @@ def references():
     user = current_user()
     conn = get_db()
     ot_rows = conn.execute('SELECT * FROM order_types ORDER BY kind, name').fetchall()
+    # причины разделены по видам приказов (v1.5.6); счётчик использования — общий
     reasons_rows = conn.execute(
-        'SELECT r.id, r.name, COUNT(o.id) used '
+        'SELECT r.id, r.name, COALESCE(r.journal, \'opeka\') AS journal, '
+        'COUNT(o.id) used '
         'FROM reasons r LEFT JOIN orders o ON o.reason_id=r.id '
-        'GROUP BY r.id ORDER BY r.name').fetchall()
+        'GROUP BY r.id ORDER BY r.journal, r.name').fetchall()
     conn.close()
     return render_template(
         'references.html', tab=tab,
@@ -1326,23 +1373,37 @@ def reasons():
 
 @app.route('/reasons/save', methods=['POST'])
 def reason_save():
-    """Добавить / переименовать причину."""
+    """Добавить / переименовать причину (с привязкой к виду приказа)."""
     user = current_user()
     if not can_edit_reasons(user):
         abort(403)
     rid = request.form.get('id', type=int)
     name = request.form.get('name', '').strip()
+    journal = (request.form.get('journal') or '').strip()
+    if journal not in JOURNAL_TYPES:
+        journal = None                    # «общая» причина (без вида приказа)
     if not name:
         flash('Укажите наименование причины', 'err')
         return redirect(url_for('references', tab='reasons') + '#rs-list')
     conn = get_db()
     try:
         if rid:
-            conn.execute('UPDATE reasons SET name=? WHERE id=?', (name, rid))
+            conn.execute('UPDATE reasons SET name=?, journal=? WHERE id=?',
+                         (name, journal, rid))
         else:
-            conn.execute('INSERT INTO reasons(name) VALUES (?)', (name,))
+            dup = conn.execute(
+                'SELECT 1 FROM reasons WHERE LOWER(TRIM(name))=? '
+                "AND COALESCE(journal,'opeka')=?",
+                (name.lower(), journal or 'opeka')).fetchone()
+            if dup:
+                conn.close()
+                flash('Такая причина для этого вида приказа уже существует', 'err')
+                return redirect(url_for('references', tab='reasons') + '#rs-list')
+            conn.execute('INSERT INTO reasons(name, journal) VALUES (?,?)',
+                         (name, journal))
         conn.commit()
-        audit('ПРИЧИНА СОХРАНЕНА', f'{name}')
+        audit('ПРИЧИНА СОХРАНЕНА',
+              f'{JOURNAL_TITLES.get(journal, "общая")}: {name}')
         flash('Причина сохранена', 'ok')
     except sqlite3.IntegrityError:
         conn.rollback()
@@ -1363,7 +1424,7 @@ def reason_delete(rid):
                         (rid,)).fetchone()['c']
     if used:
         conn.close()
-        flash('Нельзя удалить: причина используется в документах журнала «Опека»', 'err')
+        flash('Нельзя удалить: причина используется в документах', 'err')
     else:
         conn.execute('DELETE FROM reasons WHERE id=?', (rid,))
         conn.commit()
@@ -1375,29 +1436,38 @@ def reason_delete(rid):
 
 @app.route('/reasons/template')
 def reasons_template():
-    """Шаблон Excel для загрузки причин."""
+    """Шаблон Excel для загрузки причин.
+
+    Столбцы: «Причина» и необязательный «Вид приказа» (Опека / Нуждаемость /
+    Профилактика) — причины разделены по видам приказов (v1.5.6). Без
+    заполнения вида приказа строки относятся к журналу «Опека».
+    """
     _need_xlsx()
     require_login()
     wb = Workbook()
     ws = wb.active
     ws.title = 'Причины'
-    ws.append(['Причина'])
-    for rn in REASON_DEMO[:3]:
-        ws.append([rn])
+    ws.append(['Причина', 'Вид приказа'])
+    for j in JOURNAL_TYPES:
+        for rn in REASON_DEMO_BY_JOURNAL.get(j, [])[:2]:
+            ws.append([rn, JOURNAL_TITLES[j]])
     for c in ws[1]:
         c.font = Font(bold=True)
     ws.column_dimensions['A'].width = 50
+    ws.column_dimensions['B'].width = 18
     return _mem_xlsx(wb, 'шаблон_причины.xlsx')
 
 
 @app.route('/reasons/import', methods=['POST'])
 def reasons_import():
-    """Массовая загрузка причин из Excel (.xlsx) — раздел «Сервис».
+    """Массовая загрузка причин из Excel (.xlsx) — вкладка «Справочники».
 
     Достаточно одного столбца «Причина» (распознаются также варианты
-    «Наименование причины», «Основание»). Дубликаты пропускаются;
-    неизвестные значения регистрируются в справочнике (как при импорте
-    приказов журнала «Опека»).
+    «Наименование причины», «Основание»). Необязательный столбец «Вид
+    приказа» (Опека / Нуждаемость / Профилактика) задаёт принадлежность
+    причины — справочник разделён по видам приказов (v1.5.6); без него
+    строки относятся к журналу «Опека». Дубликаты (внутри своего вида)
+    пропускаются; неизвестные значения регистрируются в справочнике.
     """
     user = current_user()
     if not can_edit_reasons(user):
@@ -1422,6 +1492,9 @@ def reasons_import():
     if ci_name is None:
         flash('В файле не найден столбец «Причина»', 'err')
         return _redirect_back('reasons', back_to_service=True)
+    # необязательный столбец «Вид приказа» — определяет журнал причины
+    ci_kind = _pick(m, 'видприказа', 'вид', 'журнал')
+    title_to_key = {t.lower(): k for k, t in JOURNAL_TITLES.items()}
     conn = get_db()
     created = skipped = 0
     for n, row in enumerate(rows[1:], start=2):
@@ -1429,12 +1502,17 @@ def reasons_import():
         if not name:
             skipped += 1
             continue
-        old = conn.execute('SELECT id FROM reasons WHERE LOWER(TRIM(name))=?',
-                           (name.lower(),)).fetchone()
+        journal = None
+        if ci_kind is not None and ci_kind < len(row) and row[ci_kind]:
+            journal = _journal_key(row[ci_kind], title_to_key)
+        journal = journal if journal in JOURNAL_TYPES else 'opeka'
+        old = conn.execute(
+            'SELECT id FROM reasons WHERE LOWER(TRIM(name))=? AND COALESCE(journal,\'opeka\')=?',
+            (name.lower(), journal)).fetchone()
         if old:
             skipped += 1
         else:
-            _get_or_create_reason(conn, name)
+            _get_or_create_reason(conn, name, journal)
             created += 1
     conn.commit()
     conn.close()
@@ -1468,8 +1546,9 @@ def _journal_key(raw, title_to_key):
 def _orders_xlsx_headers(journal):
     """Заголовки столбцов для шаблона/импорта приказов конкретного журнала.
 
-    Для журнала «Опека» добавляется столбец «Причина» — данные берутся из
-    справочника «Причины» (неизвестные значения регистрируются в нём).
+    Во всех журналах (Опека / Нуждаемость / Профилактика) есть столбец
+    «Причина» — данные берутся из справочника «Причины» своего вида
+    приказов (неизвестные значения регистрируются в нём).
     """
     if REASONS_ENABLED.get(journal):
         return ['№ приказа', 'Дата приказа', 'Вид приказа', 'Наименование приказа',
@@ -1572,8 +1651,11 @@ def journal_list(journal):
     rows = conn.execute(sql, params).fetchall()
     types = conn.execute('SELECT * FROM order_types WHERE kind=? ORDER BY name',
                          (journal,)).fetchall()
-    # справочник «Причины» — используется только в журнале «Опека»
-    reasons = conn.execute('SELECT * FROM reasons ORDER BY name').fetchall()
+    # справочник «Причины»: причины разделены по видам приказов (v1.5.6) —
+    # в выпадающем списке журнала показываются причины своего вида + общие
+    reasons = conn.execute(
+        'SELECT * FROM reasons WHERE COALESCE(journal, ?)=? ORDER BY name',
+        (journal, journal)).fetchall()
     today = date.today().isoformat()
     conn.close()
     return render_template('journal.html', journal=journal, title=JOURNAL_TITLES[journal],
@@ -1619,14 +1701,16 @@ def journal_create(journal):
     person_fio = request.form.get('person_fio', '').strip()
     specialist_fio = request.form.get('specialist_fio', '').strip()
     note = request.form.get('note', '').strip()          # примечание к приказу
-    # причина приказа (журнал «Опека») — берётся из справочника «Причины»
+    # причина приказа (есть во всех журналах) — берётся из справочника «Причины»
+    # своего вида приказов (v1.5.6)
     reason_id = None
     if REASONS_ENABLED.get(journal):
         rid = request.form.get('reason_id', type=int)
         if rid and conn.execute('SELECT 1 FROM reasons WHERE id=?', (rid,)).fetchone():
             reason_id = rid
         else:
-            reason_id = _get_or_create_reason(conn, request.form.get('reason', ''))
+            reason_id = _get_or_create_reason(conn, request.form.get('reason', ''),
+                                              journal)
     if type_id:
         ok = conn.execute('SELECT 1 FROM order_types WHERE id=? AND kind=?',
                           (type_id, journal)).fetchone()
@@ -1738,7 +1822,7 @@ def journal_import(journal):
                       'фио', 'фивоотношениикого')
     ci_spec = _pick(m, 'фиоспециалиста', 'специалист', 'фиоспеца')
     ci_note = _pick(m, 'примечание', 'комментарий', 'note')
-    # столбец «Причина» — только для журнала «Опека» (справочник «Причины»)
+    # столбец «Причина» — во всех журналах (справочник «Причины» своего вида)
     ci_reason = (_pick(m, 'причина', 'основание', 'reason')
                  if REASONS_ENABLED.get(journal) else None)
     if ci_name is None and ci_person is None:
@@ -1834,8 +1918,8 @@ def journal_import(journal):
                 num += journal_prefix(conn, journal)
         else:
             num = next_order_number(conn, journal)
-        # причина из столбца «Причина» (журнал «Опека») — регистрируется в справочнике
-        reason_id = (_get_or_create_reason(conn, cell(row, ci_reason))
+        # причина из столбца «Причина» — регистрируется в справочнике своего вида
+        reason_id = (_get_or_create_reason(conn, cell(row, ci_reason), journal)
                      if ci_reason is not None else None)
         add_order(num, dt, tid, person, cell(row, ci_spec), cell(row, ci_note),
                   reason_id)
@@ -2086,7 +2170,8 @@ def order_update(oid):
     person_fio = request.form.get('person_fio', '').strip()
     specialist_fio = request.form.get('specialist_fio', '').strip()
     note = request.form.get('note', '').strip()          # примечание к приказу
-    # причина приказа (журнал «Опека») — берётся из справочника «Причины»
+    # причина приказа (есть во всех журналах) — берётся из справочника «Причины»
+    # своего вида приказов (v1.5.6)
     reason_id = row['reason_id'] if 'reason_id' in row.keys() else None
     if REASONS_ENABLED.get(journal):
         rid = request.form.get('reason_id', type=int)
@@ -2094,7 +2179,8 @@ def order_update(oid):
             reason_id = rid if conn.execute('SELECT 1 FROM reasons WHERE id=?',
                                             (rid,)).fetchone() else None
         elif request.form.get('reason') is not None:
-            reason_id = _get_or_create_reason(conn, request.form.get('reason'))
+            reason_id = _get_or_create_reason(conn, request.form.get('reason'),
+                                              journal)
     scan_rel = row['scan_path']
     f = request.files.get('scan')
     if f and f.filename:
@@ -2215,6 +2301,13 @@ def _report_period():
     d1 = request.args.get('d1') or date.today().replace(day=1).isoformat()
     d2 = request.args.get('d2') or date.today().isoformat()
     return d1, d2
+
+
+def _journal_reasons(conn, journal):
+    """Справочник «Причины» для журнала: причины своего вида + общие (v1.5.6)."""
+    return conn.execute(
+        'SELECT * FROM reasons WHERE COALESCE(journal, ?)=? ORDER BY name',
+        (journal, journal)).fetchall()
 
 
 def _query_report_rows(d1, d2, journal=None):
