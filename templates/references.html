@@ -2,8 +2,8 @@
 {% block content %}
 <h1>Справочники</h1>
 <p class="muted">Раздел содержит справочники «Виды приказов» и «Причины»
-   (поле журнала «Опека»), а также массовую загрузку их данных из файлов
-   <code>.xlsx</code>.</p>
+   (поле журналов всех видов приказов), а также массовую загрузку их данных
+   из файлов <code>.xlsx</code>.</p>
 
 <div class="tabs no-print" style="margin-bottom:14px">
   <a class="btn {% if tab == 'order_types' %}primary{% endif %}"
@@ -80,13 +80,19 @@
 {# ================= Справочник «Причины» ================= #}
 {% if tab == 'reasons' %}
 <h2 id="rs-list">Справочник «Причины»</h2>
-<p class="muted">Причины используются полем «Причина» журнала «Опека»;
-   сейчас в справочнике: {{ reasons_n }}.</p>
+<p class="muted">Причины используются полем «Причина» во всех журналах;
+   справочник разделён по видам приказов (Опека / Нуждаемость / Профилактика).
+   Сейчас в справочнике: {{ reasons_n }}.</p>
 {% if can_edit_rs %}
 <div class="panel">
   <h3 id="rsTitle">Новая причина</h3>
   <form method="post" action="{{ url_for('reason_save') }}" id="rsForm">
     <input type="hidden" name="id" id="rs_id">
+    <label>Вид приказа
+      <select name="journal" id="rs_journal">
+        {% for j,t in all_journals %}<option value="{{j}}">{{t}}</option>{% endfor %}
+      </select>
+    </label>
     <label>Причина <input name="name" id="rs_name" required style="min-width:340px"></label>
     <button class="btn primary">Сохранить</button>
     <button class="btn" type="button" onclick="resetRs()">Сброс</button>
@@ -94,16 +100,17 @@
 </div>
 {% endif %}
 <table class="grid">
-  <tr><th>№ п/п</th><th>Причина</th><th>Используется в приказах</th>
+  <tr><th>№ п/п</th><th>Вид приказа</th><th>Причина</th><th>Используется в приказах</th>
       {% if can_edit_rs %}<th></th>{% endif %}</tr>
   {% for r in reasons_rows %}
   <tr>
     <td>{{ loop.index }}</td>
+    <td>{{ journal_titles[r.journal] or 'Опека' }}</td>
     <td>{{ r.name }}</td>
     <td>{{ r.used }}</td>
     {% if can_edit_rs %}
     <td class="actions">
-      <button class="btn sm" data-id="{{ r.id }}" data-name="{{ r.name }}"
+      <button class="btn sm" data-id="{{ r.id }}" data-journal="{{ r.journal }}" data-name="{{ r.name }}"
               onclick="editRs(this)">✏️</button>
       <form method="post" action="{{ url_for('reason_delete', rid=r.id) }}" style="display:inline"
             onsubmit="return confirm('Удалить?')"><button class="btn sm danger">🗑</button></form>
@@ -111,7 +118,7 @@
     {% endif %}
   </tr>
   {% else %}
-  <tr><td colspan="{% if can_edit_rs %}4{% else %}3{% endif %}" class="empty">Справочник пуст</td></tr>
+  <tr><td colspan="{% if can_edit_rs %}5{% else %}4{% endif %}" class="empty">Справочник пуст</td></tr>
   {% endfor %}
 </table>
 
@@ -119,7 +126,9 @@
 <div class="panel" id="rs-import">
   <h3>📥 Загрузка причин из Excel</h3>
   <p class="hint">Столбец «Причина» (распознаются также «Наименование причины»,
-     «Основание»). Дубликаты пропускаются.</p>
+     «Основание»). Необязательный столбец «Вид приказа» (Опека / Нуждаемость /
+     Профилактика) задаёт принадлежность причины; без него строки относятся к
+     журналу «Опека». Дубликаты (внутри своего вида) пропускаются.</p>
   <form method="post" action="{{ url_for('reasons_import') }}" enctype="multipart/form-data">
     <label>Файл Excel (.xlsx) <input type="file" name="file" accept=".xlsx" required></label>
     <button class="btn primary" type="submit">Импортировать</button>
@@ -145,6 +154,7 @@ function resetOt(){document.getElementById('otForm').reset();document.getElement
 <script>
 function editRs(b){
   document.getElementById('rs_id').value=b.dataset.id;
+  document.getElementById('rs_journal').value=b.dataset.journal||'opeka';
   document.getElementById('rs_name').value=b.dataset.name;
   document.getElementById('rsTitle').textContent='Редактирование причины';
 }
