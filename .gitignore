@@ -1,4 +1,4 @@
 __pycache__/
 *.pyc
-data/logs/
-*.log
+data/secret_key.txt
+data/orders.db

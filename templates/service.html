@@ -105,6 +105,19 @@
       <a class="btn" href="{{ url_for('order_types_template') }}">⬇ Скачать шаблон</a>
     </form>
   </div>
+
+  {# --- справочник причин (поле журнала «Опека», v1.5.4) --- #}
+  <div class="panel">
+    <h2>❓ Причины (журнал «Опека»)</h2>
+    <p class="hint">Столбец «Причина» (распознаются также «Наименование причины»,
+       «Основание»). Дубликаты пропускаются; сейчас в справочнике: {{ reasons_n }}.
+       Просмотр и редактирование — <a href="{{ url_for('reasons') }}">Справочник «Причины»</a>.</p>
+    <form method="post" action="{{ url_for('reasons_import') }}" enctype="multipart/form-data">
+      <label>Файл Excel (.xlsx) <input type="file" name="file" accept=".xlsx" required></label>
+      <button class="btn primary" type="submit">Импортировать</button>
+      <a class="btn" href="{{ url_for('reasons_template') }}">⬇ Скачать шаблон</a>
+    </form>
+  </div>
 </div>
 
 <div class="cols">

@@ -17,6 +17,9 @@
       <a href="{{ url_for('reports') }}">Отчёты</a>
     {% endif %}
     <a href="{{ url_for('order_types') }}">Виды приказов</a>
+    {% if cu and cu.role_name in ['Администратор','Начальник отдела','Куратор'] %}
+      <a href="{{ url_for('reasons') }}">Причины</a>
+    {% endif %}
     {% if cu and cu.role_name == 'Начальник отдела' %}
       <a href="{{ url_for('employees') }}">Сотрудники</a>
     {% endif %}
