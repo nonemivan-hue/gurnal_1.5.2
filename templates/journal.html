@@ -15,7 +15,7 @@
     </label>
     <label>Ф.И.О. в отношении кого приказ <input name="person_fio" required></label>
     <label>ФИО специалиста <input name="specialist_fio" value="{{ cu.full_name if cu else '' }}"></label>
-    {% if has_reason %}{# журнал «Опека»: причина приказа берётся из справочника «Причины» #}
+    {% if has_reason %}{# причина приказа берётся из справочника «Причины» своего вида приказа #}
     <label>Причина
       <select name="reason_id">
         <option value="">— не выбрана —</option>
@@ -139,7 +139,7 @@
     </label>
     <label>Ф.И.О. в отношении кого <input name="person_fio" id="e_person"></label>
     <label>ФИО специалиста <input name="specialist_fio" id="e_spec"></label>
-    {% if has_reason %}{# журнал «Опека»: причина из справочника «Причины» #}
+    {% if has_reason %}{# причина из справочника «Причины» своего вида приказа #}
     <label>Причина
       <select name="reason_id" id="e_reason">
         <option value="">— не выбрана —</option>

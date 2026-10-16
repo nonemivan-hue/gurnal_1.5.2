@@ -80,7 +80,7 @@ def find_free_port(start):
                 continue
     return None
 
-APP_VERSION = '1.5.5'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
+APP_VERSION = '1.5.6'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
 # 1.2.0 — поле «Примечание» во всех приказах + загрузка сотрудников и видов приказов из Excel
 # 1.2.1 — куратору разрешено редактирование справочника «Виды приказов»
 # 1.2.2 — панель загрузки приказов в журналы из Excel + подробное описание обновления программы
@@ -105,6 +105,13 @@ APP_VERSION = '1.5.5'  # 1.5.0 — клиентское приложение; 1.
 #         переименование, удаление с контролем использования), загрузка причин из
 #         Excel в разделе «Сервис → Загрузка документов из Excel», шаблон Excel,
 #         API /api/v1/reasons (GET/POST/DELETE)
+# 1.5.6 — причины приказов разделены по видам приказов (колонка journal в
+#         справочнике «Причины»); поле «Причина» добавлено в журналы
+#         «Нуждаемость» и «Профилактика» (формы, колонки, импорт Excel, API);
+#         отчёт «Распечатка журнала за период» для всех видов: наименование
+#         приказа + (причина) при её наличии; справочник «Причины» на вкладке
+#         «Справочники» с выбором вида приказа; клиентское приложение — причина
+#         во всех журналах
 
 
 def setup_logging():
@@ -2423,8 +2430,8 @@ def report_journal_print():
     # выборка по виду приказа; сортировка: по дате, внутри даты — по номеру
     rows = _query_report_rows_sorted_asc(d1, d2, journal=journal)
     title = f'Журнал «{JOURNAL_TITLES[journal]}» за период'
-    # для журнала «Опека»: наименование приказа = вид приказа + (причина из справочника);
-    # для «Нуждаемость» и «Профилактика» — только наименование приказа
+    # для всех видов приказа: наименование приказа = вид приказа + (причина из
+    # справочника); в случае отсутствия причины — только наименование приказа
     with_reason = REASONS_ENABLED.get(journal, False)
     data = []
     for i, r in enumerate(rows, 1):
@@ -2570,12 +2577,21 @@ def api_order_types():
               user=f"{u['full_name']} ({u['login']})")
         return api_json({'ok': True}, 201 if not tid else 200)
     journal = request.args.get('journal')
-    # GET /api/v1/reasons — справочник «Причины» (поле журнала «Опека»)
+    # GET /api/v1/reasons — справочник «Причины»; причины разделены по видам
+    # приказов (v1.5.6): параметр ?journal= ограничивает список своим видом
     if request.args.get('reasons'):
         conn = get_db()
-        rows = conn.execute('SELECT * FROM reasons ORDER BY name').fetchall()
+        jrn = request.args.get('journal')
+        if jrn in JOURNAL_TYPES:
+            rows = conn.execute(
+                'SELECT * FROM reasons WHERE COALESCE(journal, ?)=? ORDER BY name',
+                (jrn, jrn)).fetchall()
+        else:
+            rows = conn.execute('SELECT * FROM reasons ORDER BY name').fetchall()
         conn.close()
-        return api_json([{'id': r['id'], 'name': r['name']} for r in rows])
+        return api_json([{'id': r['id'], 'name': r['name'],
+                          'journal': r['journal'] if 'journal' in r.keys() else None}
+                         for r in rows])
     conn = get_db()
     if journal:
         if journal not in JOURNAL_TYPES or not can_access_journal(u, journal):
