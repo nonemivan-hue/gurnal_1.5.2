@@ -29,6 +29,7 @@ from flask import (
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from urllib.parse import urlparse, parse_qs
 
 try:
     from openpyxl import Workbook, load_workbook
@@ -79,7 +80,7 @@ def find_free_port(start):
                 continue
     return None
 
-APP_VERSION = '1.5.4'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
+APP_VERSION = '1.5.5'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
 # 1.2.0 — поле «Примечание» во всех приказах + загрузка сотрудников и видов приказов из Excel
 # 1.2.1 — куратору разрешено редактирование справочника «Виды приказов»
 # 1.2.2 — панель загрузки приказов в журналы из Excel + подробное описание обновления программы
@@ -924,15 +925,46 @@ def employee_delete(eid):
     flash('Сотрудник удалён', 'ok')
     return redirect(url_for('employees'))
 
+# ---------------------------------------------------------------- справочники (общая вкладка)
+
+@app.route('/references')
+def references():
+    """Вкладка «Справочники»: виды приказов и причины + загрузка из Excel.
+
+    Справочники «Виды приказов» и «Причины» перенесены сюда из отдельных
+    пунктов меню; панели загрузки из Excel для них — здесь же (ранее
+    находились только в разделе «Сервис»). Старые адреса /order_types и
+    /reasons выполняют редирект на соответствующие вкладки.
+    """
+    require_login()
+    tab = request.args.get('tab', 'order_types')
+    if tab not in ('order_types', 'reasons'):
+        tab = 'order_types'
+    user = current_user()
+    conn = get_db()
+    ot_rows = conn.execute('SELECT * FROM order_types ORDER BY kind, name').fetchall()
+    reasons_rows = conn.execute(
+        'SELECT r.id, r.name, COUNT(o.id) used '
+        'FROM reasons r LEFT JOIN orders o ON o.reason_id=r.id '
+        'GROUP BY r.id ORDER BY r.name').fetchall()
+    conn.close()
+    return render_template(
+        'references.html', tab=tab,
+        order_types_rows=ot_rows, order_types_n=len(ot_rows),
+        reasons_rows=reasons_rows, reasons_n=len(reasons_rows),
+        all_journals=[(j, JOURNAL_TITLES[j]) for j in JOURNAL_TYPES],
+        journal_titles=JOURNAL_TITLES,
+        can_edit_ot=can_edit_order_types(user),
+        can_edit_rs=can_edit_reasons(user))
+
+
 # ---------------------------------------------------------------- справочник видов приказов
 
 @app.route('/order_types')
 def order_types():
     require_login()
-    conn = get_db()
-    rows = conn.execute('SELECT * FROM order_types ORDER BY kind, name').fetchall()
-    conn.close()
-    return render_template('order_types.html', rows=rows)
+    # справочник перенесён во вкладку «Справочники» (v1.5.5)
+    return redirect(url_for('references', tab='order_types'))
 
 
 @app.route('/order_types/save', methods=['POST'])
@@ -946,7 +978,7 @@ def order_type_save():
     name = request.form.get('name', '').strip()
     if not name:
         flash('Укажите наименование приказа', 'err')
-        return redirect(url_for('order_types'))
+        return redirect(url_for('references', tab='order_types') + '#ot-list')
     conn = get_db()
     try:
         if tid:
@@ -964,7 +996,7 @@ def order_type_save():
         flash('Такой вид приказа уже существует', 'err')
     finally:
         conn.close()
-    return redirect(url_for('order_types'))
+    return redirect(url_for('references', tab='order_types') + '#ot-list')
 
 
 @app.route('/order_types/delete/<int:tid>', methods=['POST'])
@@ -984,7 +1016,7 @@ def order_type_delete(tid):
         conn.close()
         audit('ВИД ПРИКАЗА УДАЛЁН', f'id={tid}')
         flash('Удалено', 'ok')
-    return redirect(url_for('order_types'))
+    return redirect(url_for('references', tab='order_types') + '#ot-list')
 
 # ------------------------------------------- импорт справочников из Excel (v1.2.0)
 
@@ -1047,12 +1079,13 @@ def _service_redirect():
 
 
 def _redirect_back(default_endpoint, back_to_service=False, **defaults):
-    """Вернуться на страницу, откуда был вызван импорт (например, «Сервис»),
-    иначе — на указанный запасной адрес.
+    """Вернуться на страницу, откуда был вызван импорт (например, «Сервис»
+    или вкладка «Справочники»), иначе — на указанный запасной адрес.
 
     При back_to_service=True возврат на собственную страницу справочника
-    не выполняется (панели загрузки оттуда перенесены в сервис) — вместо
-    этого пользователь попадает на «Сервис → Загрузка документов из Excel».
+    не выполняется — вместо этого пользователь попадает на «Сервис →
+    Загрузка документов из Excel». Если же импорт запущен со страницы
+    «Справочники» (вкладка /references), возврат остаётся на ней.
     """
     ref = request.referrer or ''
     try:
@@ -1060,6 +1093,16 @@ def _redirect_back(default_endpoint, back_to_service=False, **defaults):
     except Exception:
         same_site = False
     ep = url_for(default_endpoint, **defaults)
+    # импорт из вкладки «Справочники» — возвращаемся туда же (с якорем панели)
+    if ref and same_site and urlparse(ref).path == url_for('references'):
+        tab = ''
+        try:
+            qs = parse_qs(urlparse(ref).query)
+            tab = (qs.get('tab') or [''])[0]
+        except Exception:
+            tab = ''
+        anchor = {'order_types': '#ot-import', 'reasons': '#rs-import'}.get(tab)
+        return redirect(ref + anchor if anchor else ref)
     if ref and same_site and urlparse(ref).path == ep:
         if back_to_service:
             return redirect(_service_redirect())
@@ -1276,15 +1319,9 @@ def order_types_import():
 
 @app.route('/reasons')
 def reasons():
-    """Справочник «Причины» (поле «Причина» журнала «Опека»)."""
+    """Справочник «Причины» перенесён во вкладку «Справочники» (v1.5.5)."""
     require_login()
-    conn = get_db()
-    rows = conn.execute(
-        'SELECT r.id, r.name, COUNT(o.id) used '
-        'FROM reasons r LEFT JOIN orders o ON o.reason_id=r.id '
-        'GROUP BY r.id ORDER BY r.name').fetchall()
-    conn.close()
-    return render_template('reasons.html', rows=rows)
+    return redirect(url_for('references', tab='reasons'))
 
 
 @app.route('/reasons/save', methods=['POST'])
@@ -1297,7 +1334,7 @@ def reason_save():
     name = request.form.get('name', '').strip()
     if not name:
         flash('Укажите наименование причины', 'err')
-        return redirect(url_for('reasons'))
+        return redirect(url_for('references', tab='reasons') + '#rs-list')
     conn = get_db()
     try:
         if rid:
@@ -1313,7 +1350,7 @@ def reason_save():
         flash('Такая причина уже существует', 'err')
     finally:
         conn.close()
-    return redirect(url_for('reasons'))
+    return redirect(url_for('references', tab='reasons') + '#rs-list')
 
 
 @app.route('/reasons/delete/<int:rid>', methods=['POST'])
@@ -1333,7 +1370,7 @@ def reason_delete(rid):
         conn.close()
         audit('ПРИЧИНА УДАЛЕНА', f'id={rid}')
         flash('Удалено', 'ok')
-    return redirect(url_for('reasons'))
+    return redirect(url_for('references', tab='reasons') + '#rs-list')
 
 
 @app.route('/reasons/template')
