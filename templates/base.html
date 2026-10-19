@@ -22,6 +22,7 @@
     {% endif %}
     {% if cu and cu.role_name == 'Администратор' %}
       <a href="{{ url_for('employees') }}">Сотрудники</a>
+      <a href="{{ url_for('service_users') }}" title="Смена паролей пользователей">👥 Пользователи</a>
       <a href="{{ url_for('service') }}">Сервис</a>
       <a href="{{ url_for('logs_view') }}" title="Журнал логирования">📜 Журнал</a>
     {% endif %}

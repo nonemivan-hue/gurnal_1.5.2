@@ -80,7 +80,7 @@ def find_free_port(start):
                 continue
     return None
 
-APP_VERSION = '1.6.2'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
+APP_VERSION = '1.6.3'  # 1.5.0 — клиентское приложение; 1.5.1 — PyInstaller; 1.6.3 — смена паролей администратором
 # 1.2.0 — поле «Примечание» во всех приказах + загрузка сотрудников и видов приказов из Excel
 # 1.2.1 — куратору разрешено редактирование справочника «Виды приказов»
 # 1.2.2 — панель загрузки приказов в журналы из Excel + подробное описание обновления программы
@@ -3782,22 +3782,29 @@ def service_restore():
     return redirect(url_for('service'))
 
 
-@app.route('/service/users')
-def service_users():
-    """Список пользователей для администрирования (смена паролей)."""
-    if not is_admin():
-        abort(403)
+def _users_for_admin():
+    """Список учётных записей для страницы управления пользователями."""
     conn = get_db()
     users = conn.execute('SELECT e.id, e.full_name, e.position, e.login, '
                          'e.password_hash, e.pwd_changed_at, r.name AS role_name '
                          'FROM employees e LEFT JOIN roles r ON r.id=e.role_id '
                          'ORDER BY r.name DESC, e.full_name').fetchall()
     conn.close()
-    return jsonify([{'id': u['id'], 'full_name': u['full_name'],
-                     'position': u['position'] or '', 'login': u['login'] or '',
-                     'role': u['role_name'] or '',
-                     'has_password': bool(u['password_hash']),
-                     'pwd_changed_at': u['pwd_changed_at'] or ''} for u in users])
+    return [{'id': u['id'], 'full_name': u['full_name'],
+             'position': u['position'] or '', 'login': u['login'] or '',
+             'role': u['role_name'] or '',
+             'has_password': bool(u['password_hash']),
+             'is_self': u['id'] == session.get('user_id'),
+             'pwd_changed_at': (u['pwd_changed_at'] or '')} for u in users]
+
+
+@app.route('/service/users')
+def service_users():
+    """Страница «Пользователи»: администратор может менять пароли."""
+    require_login()
+    if not is_admin():
+        abort(403)
+    return render_template('users.html', users=_users_for_admin())
 
 
 @app.route('/service/password', methods=['POST'])
@@ -3813,12 +3820,13 @@ def service_set_password():
     uid = request.form.get('user_id', type=int)
     login_name = (request.form.get('login') or '').strip()
     new_password = request.form.get('password', '')
+    back = request.form.get('back') or 'service'  # куда вернуться после действия
     if not uid and not login_name:
         flash('Не указан пользователь для смены пароля', 'err')
         return redirect(url_for('service'))
     if len(new_password) < 4:
         flash('Новый пароль слишком короткий (минимум 4 символа)', 'err')
-        return redirect(url_for('service'))
+        return redirect(url_for(back))
     conn = get_db()
     if uid:
         emp = conn.execute('SELECT * FROM employees WHERE id=?', (uid,)).fetchone()
@@ -3827,7 +3835,7 @@ def service_set_password():
     if not emp:
         conn.close()
         flash('Пользователь не найден', 'err')
-        return redirect(url_for('service'))
+        return redirect(url_for(back))
     conn.execute('UPDATE employees SET password_hash=?, pwd_changed_at=NULL WHERE id=?',
                  (generate_password_hash(new_password), emp['id']))
     conn.commit()
@@ -3836,7 +3844,7 @@ def service_set_password():
           f"пользователь={emp['full_name']} (id={emp['id']}, "
           f"логин={emp['login'] or '—'})")
     flash(f"Пароль изменён пользователю «{emp['full_name']}»", 'ok')
-    return redirect(url_for('service'))
+    return redirect(url_for(back))
 
 
 RESTART_PENDING_FILE = os.path.join(BASE_DIR, 'data', 'restart_pending')
