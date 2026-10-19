@@ -177,3 +177,206 @@ sqlite3.IntegrityError: UNIQUE constraint failed: reasons.name
 2026-10-16 14:44:48 | INFO     | [АУДИТ] ПРИКАЗ СОЗДАН (API) | пользователь: id=Системный администратор (admin) | IP: 127.0.0.1 | журнал=Опека, №=1-ОП, по кому=Тестовый Т.Т.
 2026-10-16 14:44:48 | INFO     | [HTTP] POST /api/v1/journal/opeka/orders -> 201 (IP: 127.0.0.1, user_id: -)
 2026-10-19 05:57:56 | WARNING  | [HTTP] GET /api/v1/order_prefixes -> 401 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:08 | INFO     | Сервер запущен: http://0.0.0.0:8080 (версия 1.6.3, логи: /workspace/data/logs/app.log)
+2026-10-19 12:07:12 | INFO     | [HTTP] GET /login -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:14 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | роль: Администратор
+2026-10-19 12:07:14 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:14 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:14 | INFO     | [HTTP] GET /api/active_users -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:14 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:14 | INFO     | [HTTP] GET /employees -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:15 | INFO     | [АУДИТ] СОТРУДНИК СОХРАНЁН | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | ТестОнлайн Куратор
+2026-10-19 12:07:15 | INFO     | [HTTP] POST /employees/save -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET /employees -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:15 | INFO     | [АУДИТ] СОТРУДНИК СОХРАНЁН | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | ТестОнлайн Начотдел
+2026-10-19 12:07:15 | INFO     | [HTTP] POST /employees/save -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET /employees -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:15 | INFO     | [АУДИТ] СОТРУДНИК СОХРАНЁН | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | ТестОнлайн Опекун
+2026-10-19 12:07:15 | INFO     | [HTTP] POST /employees/save -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET /employees -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:15 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: ТестОнлайн Куратор (cur_test) | IP: 127.0.0.1 | роль: Куратор
+2026-10-19 12:07:15 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 2)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 2)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET /api/active_users -> 200 (IP: 127.0.0.1, user_id: 2)
+2026-10-19 12:07:15 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: ТестОнлайн Начотдел (head_test) | IP: 127.0.0.1 | роль: Начальник отдела
+2026-10-19 12:07:15 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 3)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 3)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET /api/active_users -> 200 (IP: 127.0.0.1, user_id: 3)
+2026-10-19 12:07:15 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: ТестОнлайн Опекун (opeka_test) | IP: 127.0.0.1 | роль: Опека
+2026-10-19 12:07:15 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 4)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 4)
+2026-10-19 12:07:15 | WARNING  | [HTTP] GET /api/active_users -> 403 (IP: 127.0.0.1, user_id: 4)
+2026-10-19 12:07:15 | INFO     | [АУДИТ] ОТКАЗ В ДОСТУПЕ (403) | пользователь: ТестОнлайн Опекун (opeka_test) | IP: 127.0.0.1 | GET /api/active_users
+2026-10-19 12:07:15 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET /api/active_users -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 2)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET /api/active_users -> 200 (IP: 127.0.0.1, user_id: 2)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 3)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET /api/active_users -> 200 (IP: 127.0.0.1, user_id: 3)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 4)
+2026-10-19 12:07:15 | WARNING  | [HTTP] GET /api/active_users -> 403 (IP: 127.0.0.1, user_id: 4)
+2026-10-19 12:07:15 | INFO     | [АУДИТ] ОТКАЗ В ДОСТУПЕ (403) | пользователь: ТестОнлайн Опекун (opeka_test) | IP: 127.0.0.1 | GET /api/active_users
+2026-10-19 12:07:15 | INFO     | [HTTP] GET /api/active_users -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:15 | INFO     | [АУДИТ] ВЫХОД ИЗ СИСТЕМЫ | пользователь: ТестОнлайн Опекун (opeka_test) | IP: 127.0.0.1 | 
+2026-10-19 12:07:15 | INFO     | [HTTP] GET /logout -> 302 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET /login -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET /api/active_users -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 2)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET /api/active_users -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET /employees -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:15 | INFO     | [АУДИТ] СОТРУДНИК УДАЛЁН | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | id=2
+2026-10-19 12:07:15 | INFO     | [HTTP] POST /employees/delete/2 -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET /employees -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:15 | INFO     | [АУДИТ] СОТРУДНИК УДАЛЁН | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | id=3
+2026-10-19 12:07:15 | INFO     | [HTTP] POST /employees/delete/3 -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET /employees -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:15 | INFO     | [АУДИТ] СОТРУДНИК УДАЛЁН | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | id=4
+2026-10-19 12:07:15 | INFO     | [HTTP] POST /employees/delete/4 -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET /employees -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:15 | INFO     | [HTTP] GET /employees -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:16 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | роль: Администратор
+2026-10-19 12:07:16 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:16 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:16 | INFO     | [АУДИТ] СОТРУДНИК СОХРАНЁН | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | Тестовый Тест Тестович
+2026-10-19 12:07:16 | INFO     | [HTTP] POST /employees/save -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:16 | INFO     | [HTTP] GET /employees -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:16 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Тестовый Тест Тестович (testemp) | IP: 127.0.0.1 | роль: Опека
+2026-10-19 12:07:16 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 5)
+2026-10-19 12:07:16 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 5)
+2026-10-19 12:07:16 | INFO     | [HTTP] GET /profile -> 200 (IP: 127.0.0.1, user_id: 5)
+2026-10-19 12:07:16 | INFO     | [АУДИТ] ПАРОЛЬ НЕ ИЗМЕНЁН | пользователь: Тестовый Тест Тестович (testemp) | IP: 127.0.0.1 | неверно указан текущий пароль
+2026-10-19 12:07:16 | INFO     | [HTTP] POST /profile -> 302 (IP: 127.0.0.1, user_id: 5)
+2026-10-19 12:07:16 | INFO     | [HTTP] GET /profile -> 200 (IP: 127.0.0.1, user_id: 5)
+2026-10-19 12:07:16 | INFO     | [HTTP] POST /profile -> 302 (IP: 127.0.0.1, user_id: 5)
+2026-10-19 12:07:16 | INFO     | [HTTP] GET /profile -> 200 (IP: 127.0.0.1, user_id: 5)
+2026-10-19 12:07:16 | INFO     | [HTTP] POST /profile -> 302 (IP: 127.0.0.1, user_id: 5)
+2026-10-19 12:07:16 | INFO     | [HTTP] GET /profile -> 200 (IP: 127.0.0.1, user_id: 5)
+2026-10-19 12:07:16 | INFO     | [АУДИТ] ПАРОЛЬ ИЗМЕНЁН | пользователь: Тестовый Тест Тестович (testemp) | IP: 127.0.0.1 | собственный профиль (сотрудник сменил пароль сам)
+2026-10-19 12:07:16 | INFO     | [HTTP] POST /profile -> 302 (IP: 127.0.0.1, user_id: 5)
+2026-10-19 12:07:16 | INFO     | [HTTP] GET /profile -> 200 (IP: 127.0.0.1, user_id: 5)
+2026-10-19 12:07:17 | INFO     | [HTTP] POST /login -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:17 | WARNING  | [БЕЗОПАСНОСТЬ] Неудачная попытка входа: логин 'testemp' от IP 127.0.0.1
+2026-10-19 12:07:17 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Тестовый Тест Тестович (testemp) | IP: 127.0.0.1 | роль: Опека
+2026-10-19 12:07:17 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 5)
+2026-10-19 12:07:17 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 5)
+2026-10-19 12:07:17 | INFO     | [HTTP] GET /profile -> 200 (IP: 127.0.0.1, user_id: 5)
+2026-10-19 12:07:17 | INFO     | [АУДИТ] ИЗМЕНЁН СОТРУДНИК | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | id=5, Тестовый Тест Тестович
+2026-10-19 12:07:17 | INFO     | [АУДИТ] СОТРУДНИК СОХРАНЁН | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | Тестовый Тест Тестович
+2026-10-19 12:07:17 | INFO     | [HTTP] POST /employees/save -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:17 | INFO     | [HTTP] GET /employees -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:17 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Тестовый Тест Тестович (testemp) | IP: 127.0.0.1 | роль: Опека
+2026-10-19 12:07:17 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 5)
+2026-10-19 12:07:17 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 5)
+2026-10-19 12:07:17 | INFO     | [HTTP] GET /api/v1/session -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:17 | INFO     | [HTTP] GET /api/v1/employees -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:18 | INFO     | [HTTP] GET /api/v1/order_types -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:18 | INFO     | [АУДИТ] ПРИКАЗ СОЗДАН (API) | пользователь: id=Системный администратор (admin) | IP: 127.0.0.1 | журнал=Опека, №=2-ОП, по кому=Тестовый Т.Т.
+2026-10-19 12:07:18 | INFO     | [HTTP] POST /api/v1/journal/opeka/orders -> 201 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:20 | INFO     | [HTTP] GET /api/v1/session -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:20 | INFO     | [HTTP] GET /api/v1/employees -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:20 | INFO     | [HTTP] GET /api/v1/order_types -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:20 | INFO     | [АУДИТ] ПРИКАЗ СОЗДАН (API) | пользователь: id=Системный администратор (admin) | IP: 127.0.0.1 | журнал=Опека, №=3-ОП, по кому=Тестовый Т.Т.
+2026-10-19 12:07:20 | INFO     | [HTTP] POST /api/v1/journal/opeka/orders -> 201 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:21 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | роль: Администратор
+2026-10-19 12:07:21 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:21 | INFO     | [АУДИТ] СОТРУДНИК СОХРАНЁН | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | Тестов Начальник Тестович
+2026-10-19 12:07:21 | INFO     | [HTTP] POST /employees/save -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /employees -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:21 | INFO     | [HTTP] POST /login -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:21 | WARNING  | [БЕЗОПАСНОСТЬ] Неудачная попытка входа: логин 'kur_test' от IP 127.0.0.1
+2026-10-19 12:07:21 | INFO     | [АУДИТ] СОТРУДНИК СОХРАНЁН | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | Тестов Куратор Тестович
+2026-10-19 12:07:21 | INFO     | [HTTP] POST /employees/save -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /employees -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:21 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Тестов Начальник Тестович (nach_test) | IP: 127.0.0.1 | роль: Начальник отдела
+2026-10-19 12:07:21 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /journal/opeka -> 200 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /journal/nuzhdaemost -> 200 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /journal/profilaktika -> 200 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [АУДИТ] ПРИКАЗ СОЗДАН | пользователь: Тестов Начальник Тестович (nach_test) | IP: 127.0.0.1 | журнал=Опека, №=4-ОП, по кому=Гражданин Т. Т. Т.
+2026-10-19 12:07:21 | INFO     | [HTTP] POST /journal/opeka/create -> 302 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /journal/opeka -> 200 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [АУДИТ] ПРИКАЗ СОЗДАН | пользователь: Тестов Начальник Тестович (nach_test) | IP: 127.0.0.1 | журнал=Нуждаемость, №=1-Н, по кому=Гражданин Т. Т. Т.
+2026-10-19 12:07:21 | INFO     | [HTTP] POST /journal/nuzhdaemost/create -> 302 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /journal/nuzhdaemost -> 200 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [АУДИТ] ПРИКАЗ СОЗДАН | пользователь: Тестов Начальник Тестович (nach_test) | IP: 127.0.0.1 | журнал=Профилактика, №=1-П, по кому=Гражданин Т. Т. Т.
+2026-10-19 12:07:21 | INFO     | [HTTP] POST /journal/profilaktika/create -> 302 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /journal/profilaktika -> 200 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /reports/by_period -> 200 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /reports/by_period -> 200 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /reports/by_period_detail -> 200 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /reports/by_period_detail -> 200 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /reports/journal_print -> 200 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /reports/journal_print -> 200 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /employees -> 200 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /order_types -> 302 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /references -> 200 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [АУДИТ] ВИД ПРИКАЗА СОХРАНЁН | пользователь: Тестов Начальник Тестович (nach_test) | IP: 127.0.0.1 | Опека: Тест вид приказа НО
+2026-10-19 12:07:21 | INFO     | [HTTP] POST /order_types/save -> 302 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /references -> 200 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [АУДИТ] ВИД ПРИКАЗА УДАЛЁН | пользователь: Тестов Начальник Тестович (nach_test) | IP: 127.0.0.1 | id=14
+2026-10-19 12:07:21 | INFO     | [HTTP] POST /order_types/delete/14 -> 302 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /references -> 200 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [АУДИТ] СОТРУДНИК СОХРАНЁН | пользователь: Тестов Начальник Тестович (nach_test) | IP: 127.0.0.1 | Тест Подчинённый П. П.
+2026-10-19 12:07:21 | INFO     | [HTTP] POST /employees/save -> 302 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /employees -> 200 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [HTTP] GET /employees/template -> 200 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | WARNING  | [HTTP] GET /service -> 403 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [АУДИТ] ОТКАЗ В ДОСТУПЕ (403) | пользователь: Тестов Начальник Тестович (nach_test) | IP: 127.0.0.1 | GET /service
+2026-10-19 12:07:21 | WARNING  | [HTTP] GET /logs -> 403 (IP: 127.0.0.1, user_id: 6)
+2026-10-19 12:07:21 | INFO     | [АУДИТ] ОТКАЗ В ДОСТУПЕ (403) | пользователь: Тестов Начальник Тестович (nach_test) | IP: 127.0.0.1 | GET /logs
+2026-10-19 12:07:22 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Тестов Куратор Тестович (kur_test) | IP: 127.0.0.1 | роль: Куратор
+2026-10-19 12:07:22 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 7)
+2026-10-19 12:07:22 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 7)
+2026-10-19 12:07:22 | WARNING  | [HTTP] POST /employees/save -> 403 (IP: 127.0.0.1, user_id: 7)
+2026-10-19 12:07:22 | INFO     | [АУДИТ] ОТКАЗ В ДОСТУПЕ (403) | пользователь: Тестов Куратор Тестович (kur_test) | IP: 127.0.0.1 | POST /employees/save
+2026-10-19 12:07:24 | INFO     | [HTTP] GET /api/v1/session -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:24 | INFO     | [HTTP] GET /api/v1/employees -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:24 | INFO     | [HTTP] GET /api/v1/order_types -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:24 | INFO     | [АУДИТ] ПРИКАЗ СОЗДАН (API) | пользователь: id=Системный администратор (admin) | IP: 127.0.0.1 | журнал=Опека, №=5-ОП, по кому=Тестовый Т.Т.
+2026-10-19 12:07:24 | INFO     | [HTTP] POST /api/v1/journal/opeka/orders -> 201 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:33 | INFO     | [HTTP] GET /api/v1/session -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:33 | INFO     | [HTTP] GET /api/v1/employees -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:33 | INFO     | [HTTP] GET /api/v1/order_types -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:34 | INFO     | [АУДИТ] ПРИКАЗ СОЗДАН (API) | пользователь: id=Системный администратор (admin) | IP: 127.0.0.1 | журнал=Опека, №=6-ОП, по кому=Тестовый Т.Т.
+2026-10-19 12:07:34 | INFO     | [HTTP] POST /api/v1/journal/opeka/orders -> 201 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:07:37 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | роль: Администратор
+2026-10-19 12:07:37 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:37 | INFO     | [HTTP] GET /references -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:37 | INFO     | [HTTP] GET /api/active_users -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:37 | INFO     | [HTTP] GET /api/v1/order_types -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:40 | INFO     | [HTTP] GET /references -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:40 | INFO     | [HTTP] GET /service -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:50 | INFO     | [HTTP] GET /journal/nuzhdaemost -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:50 | WARNING  | [HTTP] GET /report/print -> 404 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:50 | WARNING  | [HTTP] GET /report/print -> 404 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:51 | WARNING  | [HTTP] GET /report/print -> 404 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:53 | WARNING  | [HTTP] GET /report/journal_print -> 404 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:57 | INFO     | [HTTP] GET /reports/journal_print -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:57 | INFO     | [HTTP] GET /reports/journal_print -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:57 | INFO     | [HTTP] GET /reports/journal_print -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:57 | INFO     | [HTTP] GET /reports/journal_print -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:57 | INFO     | [HTTP] GET /reports/journal_print -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:57 | INFO     | [HTTP] GET /reports/journal_print -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:07:57 | INFO     | [HTTP] GET /reports/journal_print -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:08:01 | INFO     | [HTTP] GET /reports/journal_print -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:08:04 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | роль: Администратор
+2026-10-19 12:08:04 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:08:04 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:08:04 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:08:04 | INFO     | [HTTP] GET /api/active_users -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:08:05 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Тест Куратор2 (tmp_kurator2) | IP: 127.0.0.1 | роль: Куратор
+2026-10-19 12:08:05 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 9)
+2026-10-19 12:08:05 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 9)
+2026-10-19 12:08:05 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 9)
+2026-10-19 12:08:05 | INFO     | [HTTP] GET /api/active_users -> 200 (IP: 127.0.0.1, user_id: 9)
+2026-10-19 12:08:05 | INFO     | [HTTP] POST /login -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:08:05 | WARNING  | [БЕЗОПАСНОСТЬ] Неудачная попытка входа: логин 'nach_test' от IP 127.0.0.1
+2026-10-19 12:08:05 | INFO     | [HTTP] GET / -> 302 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:08:05 | INFO     | [HTTP] GET /login -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-19 12:08:08 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | роль: Администратор
+2026-10-19 12:08:08 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:08:08 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:08:08 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 1)
+2026-10-19 12:08:08 | INFO     | [HTTP] GET /api/active_users -> 200 (IP: 127.0.0.1, user_id: 1)
