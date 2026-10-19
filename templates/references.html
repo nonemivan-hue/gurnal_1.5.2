@@ -1,15 +1,17 @@
 {% extends 'base.html' %}
 {% block content %}
 <h1>Справочники</h1>
-<p class="muted">Раздел содержит справочники «Виды приказов» и «Причины»
-   (поле журналов всех видов приказов), а также массовую загрузку их данных
-   из файлов <code>.xlsx</code>.</p>
+<p class="muted">Раздел содержит справочники «Виды приказов», «Причины» и
+   «Префиксы нумерации» (поле журналов всех видов приказов), а также массовую
+   загрузку их данных из файлов <code>.xlsx</code>.</p>
 
 <div class="tabs no-print" style="margin-bottom:14px">
   <a class="btn {% if tab == 'order_types' %}primary{% endif %}"
      href="{{ url_for('references', tab='order_types') }}#ot-list">🗂 Виды приказов</a>
   <a class="btn {% if tab == 'reasons' %}primary{% endif %}"
      href="{{ url_for('references', tab='reasons') }}#rs-list">❓ Причины</a>
+  <a class="btn {% if tab == 'prefixes' %}primary{% endif %}"
+     href="{{ url_for('references', tab='prefixes') }}#pf-list"># Префиксы нумерации</a>
 </div>
 
 {# ================= Справочник «Виды приказов» ================= #}
@@ -151,6 +153,56 @@
 {% endif %}
 {% endif %}
 
+{# ============ Справочник «Префиксы нумерации приказов» (v1.5.9) ============ #}
+{% if tab == 'prefixes' %}
+<h2 id="pf-list">Справочник «Префиксы нумерации приказов»</h2>
+<p class="muted">Префикс добавляется к номеру приказа при его регистрации:
+   Опека — «ОП» (номер <code>1-ОП</code>), Нуждаемость — номер + «Н»
+   (<code>5-Н</code>), Профилактика (признание) — номер + «П»
+   (<code>2-П</code>, v1.6.0: вместо «ПР»). Значение
+   приводится к виду «-ОП»: ведущий дефис добавляется автоматически, латиница —
+   в верхний регистр. Пустой префикс — суффикс журнала по умолчанию.</p>
+<table class="grid">
+  <tr><th>№ п/п</th><th>Вид приказа</th><th>Префикс</th><th>Пример номера</th>
+      {% if can_edit_ot %}<th></th>{% endif %}</tr>
+  {% for j,t in all_journals %}
+  <tr>
+    <td>{{ loop.index }}</td>
+    <td>{{ t }}</td>
+    <td><b>{{ prefixes[j] or default_prefixes.get(j, '') or '—' }}</b></td>
+    <td class="muted">1{% if prefixes[j] %}-{{ prefixes[j] }}{% else %}{{ '-' ~ default_prefixes.get(j, '')|lower }}{% endif %}</td>
+    {% if can_edit_ot %}
+    <td class="actions">
+      <button class="btn sm" data-journal="{{ j }}" data-prefix="{{ prefixes[j] }}"
+              onclick="editPf(this)">✏️ Изменить</button>
+    </td>
+    {% endif %}
+  </tr>
+  {% endfor %}
+</table>
+{% if can_edit_ot %}
+<div class="panel">
+  <h3 id="pfTitle">Новый префикс</h3>
+  <form method="post" action="{{ url_for('order_prefix_save') }}" id="pfForm">
+    <label>Вид приказа
+      <select name="journal" id="pf_journal">
+        {% for j,t in all_journals %}<option value="{{j}}">{{t}}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Префикс номера приказа
+      <input name="prefix" id="pf_prefix" placeholder="напр. ОП или Н" style="min-width:140px">
+    </label>
+    <button class="btn primary">Сохранить</button>
+    <button class="btn" type="button" onclick="resetPf()">Сброс</button>
+  </form>
+  <p class="hint">Оставьте поле пустым, чтобы использовать суффикс журнала по
+     умолчанию («-оп», «-н», «-п»). Для Нуждаемости принят префикс «Н» —
+     номер приказа записывается как «5-Н»; для Профилактики (признание) — «П»
+     («7-П», v1.6.0 вместо «пр»).</p>
+</div>
+{% endif %}
+{% endif %}
+
 {% if tab == 'order_types' and can_edit_ot %}
 <script>
 function editOt(b){
@@ -173,6 +225,17 @@ function editRs(b){
 }
 function resetRs(){document.getElementById('rsForm').reset();document.getElementById('rs_id').value='';
   document.getElementById('rsTitle').textContent='Новая причина';}
+</script>
+{% endif %}
+{% if tab == 'prefixes' and can_edit_ot %}
+<script>
+function editPf(b){
+  document.getElementById('pf_journal').value=b.dataset.journal;
+  document.getElementById('pf_prefix').value=b.dataset.prefix||'';
+  document.getElementById('pfTitle').textContent='Изменение префикса';
+}
+function resetPf(){document.getElementById('pfForm').reset();
+  document.getElementById('pfTitle').textContent='Новый префикс';}
 </script>
 {% endif %}
 {% endblock %}
