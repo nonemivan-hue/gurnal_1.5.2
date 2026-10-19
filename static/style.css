@@ -100,3 +100,7 @@ th.sortable .sort-ind{color:#1c3f63;font-size:11px;margin-left:4px;}
          border:1px solid #c6d2e0;border-radius:8px;padding:8px 12px;margin:8px 0;}
 .bulkbar[hidden]{display:none;}
 @media print{.periodbar,.bulkbar,.chk-col,.row-check{display:none!important;}}
+
+/* Выбор разделов архива (v1.6.2) */
+.backup-sections { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.backup-sections label { font-weight: normal; }
