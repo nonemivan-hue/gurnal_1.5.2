@@ -80,7 +80,7 @@ def find_free_port(start):
                 continue
     return None
 
-APP_VERSION = '1.6.2'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
+APP_VERSION = '1.6.3'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
 # 1.2.0 — поле «Примечание» во всех приказах + загрузка сотрудников и видов приказов из Excel
 # 1.2.1 — куратору разрешено редактирование справочника «Виды приказов»
 # 1.2.2 — панель загрузки приказов в журналы из Excel + подробное описание обновления программы
@@ -147,6 +147,16 @@ APP_VERSION = '1.6.2'  # 1.5.0 — клиентское приложение; 1.
 #         «Префиксы нумерации» создаётся автоматически при первом обращении,
 #         если сервер не был перезапущен после обновления кода (миграция
 #         выполняется в init_db только при старте приложения)
+# 1.6.3 — выборочное сохранение архива в разделе «Сервис»: при создании
+#         резервной копии администратор отмечает разделы — база данных,
+#         документы (сканы PDF), справочники (сотрудники, виды приказов,
+#         причины, префиксы нумерации). Для справочников в архив
+#         дополнительно кладётся Excel-книга spravochniki.xlsx (лист на
+#         каждый справочник). Если ничего не отмечено — копируется всё
+#         (обратная совместимость). Показ пользователей online уже реализован
+#         (панель «👥 Онлайн» в шапке для Администратора, Куратора и
+#         Начальника отдела; API /api/active_users, автообновление каждые
+#         30 секунд)
 
 
 def setup_logging():
@@ -3570,27 +3580,93 @@ def service():
                            reasons_n=reasons_n)
 
 
+# Состав выборочной резервной копии (v1.6.3): допустимые разделы и их
+# содержимое. Значение по умолчанию — всё (как в полной копии 1.6.2).
+BACKUP_SECTIONS = {
+    'db': 'База данных (журналы приказов)',
+    'scans': 'Документы (сканы PDF из data/scans)',
+    'references': 'Справочники (сотрудники, виды приказов, причины, префиксы)',
+}
+
+
+def _dump_references_xlsx(dbpath: str, out_path: str):
+    """Выгрузить справочники из БД в Excel-книгу (лист на каждый справочник).
+
+    Листы: «Сотрудники», «Виды приказов», «Причины», «Префиксы нумерации».
+    Выгружаются только актуальные записи справочника «Причины» (active=1,
+    см. v1.5.7). Используется при выборочном архивировании (v1.6.3)."""
+    from openpyxl import Workbook
+    wb = Workbook()
+    wb.remove(wb.active)
+    conn = sqlite3.connect(dbpath)
+    conn.row_factory = sqlite3.Row
+    try:
+        def sheet(title, header, rows):
+            ws = wb.create_sheet(title[:31])
+            ws.append(header)
+            for r in rows:
+                ws.append(list(r))
+        sheet('Сотрудники',
+              ['ФИО', 'Должность', 'Логин', 'Роль'],
+              [tuple(r) for r in conn.execute(
+                  'SELECT e.full_name, e.position, e.login, r.name '
+                  'FROM employees e LEFT JOIN roles r ON r.id=e.role_id '
+                  'ORDER BY e.full_name')])
+        sheet('Виды приказов',
+              ['Вид приказа', 'Наименование приказа'],
+              [tuple(r) for r in conn.execute(
+                  'SELECT kind, name FROM order_types ORDER BY kind, name')])
+        sheet('Причины',
+              ['Вид приказа', 'Причина'],
+              [tuple(r) for r in conn.execute(
+                  "SELECT COALESCE(journal, ''), name FROM reasons "
+                  'WHERE active=1 ORDER BY journal, name')])
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
+                        "AND name='order_prefixes'").fetchone():
+            sheet('Префиксы нумерации',
+                  ['Вид приказа', 'Префикс'],
+                  [tuple(r) for r in conn.execute(
+                      'SELECT journal, prefix FROM order_prefixes '
+                      'ORDER BY journal')])
+        wb.save(out_path)
+    finally:
+        conn.close()
+
+
 @app.route('/service/backup', methods=['POST'])
 def service_backup():
     if not is_admin():
         abort(403)
+    # выборочное сохранение архива (v1.6.3): администратор отмечает, какие
+    # разделы включить в копию; если не отмечено ничего — создаётся полная
+    # копия (обратная совместимость с предыдущими версиями формы)
+    sections = [s for s in request.form.getlist('sections')
+                if s in BACKUP_SECTIONS] or list(BACKUP_SECTIONS)
     stamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     tmp = tempfile.mkdtemp(prefix='backup_')
     try:
-        dbcopy = os.path.join(tmp, 'orders.db')
-        src = get_db()
-        dst = sqlite3.connect(dbcopy)
-        src.backup(dst)
-        src.close()
-        dst.close()
-        scans_dir = os.path.join(tmp, 'scans')
-        if os.path.isdir(UPLOAD_DIR):
-            shutil.copytree(UPLOAD_DIR, scans_dir)
-        zipname = f'backup_{stamp}.zip'
+        if 'db' in sections or 'references' in sections:
+            dbcopy = os.path.join(tmp, 'orders.db')
+            src = get_db()
+            dst = sqlite3.connect(dbcopy)
+            src.backup(dst)
+            src.close()
+            dst.close()
+        if 'references' in sections:
+            # отдельный Excel со справочниками — читается без программы,
+            # удобен для хранения/передачи (v1.6.3)
+            _dump_references_xlsx(os.path.join(tmp, 'orders.db'),
+                                  os.path.join(tmp, 'spravochniki.xlsx'))
+        if 'scans' in sections and os.path.isdir(UPLOAD_DIR):
+            shutil.copytree(UPLOAD_DIR, os.path.join(tmp, 'scans'))
+        suffix = '' if len(sections) == len(BACKUP_SECTIONS) \
+            else '_' + '-'.join(s for s in BACKUP_SECTIONS if s in sections)
+        zipname = f'backup{suffix}_{stamp}.zip'
         zpath = os.path.join(ARCHIVE_DIR, zipname)
         os.makedirs(ARCHIVE_DIR, exist_ok=True)
         shutil.make_archive(zpath[:-4], 'zip', tmp)
-        audit('РЕЗЕРВНАЯ КОПИЯ СОЗДАНА', zipname)
+        audit('РЕЗЕРВНАЯ КОПИЯ СОЗДАНА',
+              f'{zipname} (разделы: {", ".join(BACKUP_SECTIONS[s] for s in sections)})')
         flash(f'Архив создан: {zipname}', 'ok')
     except Exception as e:
         flash(f'Ошибка создания архива: {e}', 'err')

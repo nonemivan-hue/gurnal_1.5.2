@@ -6,8 +6,19 @@
 <div class="cols">
   <div class="panel">
     <h2>💾 Архивирование (резервная копия)</h2>
-    <p>Создаёт ZIP-архив с базой данных и всеми загруженными сканами.</p>
+    <p>Создаёт ZIP-архив. Отметьте, что включить в копию (выборочное
+       сохранение, v1.6.3); если ничего не отмечено — архивируется всё:
+       база данных и все загруженные сканы.</p>
     <form method="post" action="{{ url_for('service_backup') }}">
+      <div class="backup-sections" style="margin:8px 0;">
+        <label style="display:block"><input type="checkbox" name="sections" value="db" checked>
+          База данных (журналы приказов, orders.db)</label>
+        <label style="display:block"><input type="checkbox" name="sections" value="scans" checked>
+          Документы (сканы PDF из папки data/scans)</label>
+        <label style="display:block"><input type="checkbox" name="sections" value="references" checked>
+          Справочники (сотрудники, виды приказов, причины, префиксы нумерации —
+          дополнительно в архив кладётся файл <code>spravochniki.xlsx</code>)</label>
+      </div>
       <button class="btn primary">Создать резервную копию</button>
     </form>
   </div>
