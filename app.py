@@ -80,7 +80,7 @@ def find_free_port(start):
                 continue
     return None
 
-APP_VERSION = '1.6.1'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
+APP_VERSION = '1.6.2'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
 # 1.2.0 — поле «Примечание» во всех приказах + загрузка сотрудников и видов приказов из Excel
 # 1.2.1 — куратору разрешено редактирование справочника «Виды приказов»
 # 1.2.2 — панель загрузки приказов в журналы из Excel + подробное описание обновления программы
@@ -142,6 +142,11 @@ APP_VERSION = '1.6.1'  # 1.5.0 — клиентское приложение; 1.
 #         «Н»; добавлена идемпотентная миграция: стандартные значения «ну»/«-ну»
 #         в справочнике «Префиксы нумерации» автоматически заменяются на «Н»
 #         (пользовательские нестандартные префиксы сохраняются)
+# 1.6.2 — исправление ошибки «no such table: order_prefixes» на /references:
+#         добавлена ленивая домиграция схемы ensure_schema() — таблица
+#         «Префиксы нумерации» создаётся автоматически при первом обращении,
+#         если сервер не был перезапущен после обновления кода (миграция
+#         выполняется в init_db только при старте приложения)
 
 
 def setup_logging():
@@ -652,6 +657,29 @@ def get_db():
     return conn
 
 
+# блокировка ленивой домиграции схемы (v1.6.2) — Flask работает в
+# многопоточном режиме, одновременные запросы не должны выполнять
+# миграцию дважды (гонка на CREATE TABLE / BEGIN IMMEDIATE)
+_schema_lock = threading.RLock()
+
+
+def ensure_schema(conn):
+    """Ленивая домиграция схемы (v1.6.2).
+
+    Защита от ошибки «no such table: order_prefixes»: если приложение
+    работает на базе, к которой миграция справочника префиксов не была
+    применена (например, сервер был запущен со старой версией app.py и
+    после обновления кода не перезапущен), создаём таблицу и заполняем
+    её значениями по умолчанию прямо при обращении. Быстрый путь —
+    проверка наличия таблицы без захвата блокировки; полная идемпотентная
+    миграция выполняется только при необходимости (см. _seed_order_prefixes).
+    """
+    exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
+                          "AND name='order_prefixes'").fetchone()
+    if not exists:
+        _seed_order_prefixes(conn)
+
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS roles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -722,7 +750,13 @@ def _drop_reasons_unique_index(conn):
     наименования в разных видах приказов (например, «Смерть» для Опеки
     и для Нуждаемости). Пересоздаём таблицу без этого ограничения,
     сохраняя id записей и связи приказов (orders.reason_id).
+
+    Идемпотентна (v1.6.2): повторный вызов на уже чистой таблице ничего
+    не делает; защищена от случая, когда таблицы «Причины» ещё нет.
     """
+    if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
+                        "AND name='reasons'").fetchone():
+        return                      # таблицы ещё нет — создаётся SCHEMA
     info = conn.execute('SELECT sql FROM sqlite_master WHERE type=\'table\' '
                         'AND name=\'reasons\'').fetchone()
     if not info or not info['sql'] or 'UNIQUE' not in info['sql'].upper():
@@ -773,33 +807,46 @@ def _seed_order_prefixes(conn):
     стандартные значения «ну»/«-ну» автоматически заменяются на «Н»
     (например, номер «5-НУ» становится «5-Н»). Нестандартные значения
     сохраняются.
+
+    Идемпотентна и потокобезопасна (v1.6.2): вызывается как из init_db()
+    при старте, так и лениво из ensure_schema() при обращении к справочнику
+    (защита от «no such table: order_prefixes», если сервер не был перезапущен
+    после обновления кода). В многопоточном режиме (Flask threaded) одновременные
+    вызовы защищены блокировкой и транзакцией IMMEDIATE.
     """
-    conn.execute(
-        'CREATE TABLE IF NOT EXISTS order_prefixes ('
-        '  journal TEXT PRIMARY KEY,'          # opeka / nuzhdaemost / profilaktika
-        '  prefix TEXT NOT NULL DEFAULT \'\''  # префикс вида «ОП» -> «1-ОП»
-        ')')
-    # вид приказа -> набор старых стандартных значений (в нижнем регистре,
-    # без ведущего дефиса), подлежащих автозамене на значение по умолчанию
-    legacy_std = {
-        'profilaktika': {'пр', 'п'},   # v1.6.0: «пр» -> «п»
-        'nuzhdaemost': {'ну', 'н'},    # v1.6.1: «ну» -> «н»
-    }
-    for j in JOURNAL_TYPES:
-        row = conn.execute('SELECT prefix FROM order_prefixes WHERE journal=?',
-                           (j,)).fetchone()
-        if not row:
-            conn.execute('INSERT INTO order_prefixes(journal, prefix) VALUES (?,?)',
-                         (j, DEFAULT_ORDER_PREFIX.get(j, '')))
-        elif j in legacy_std:
-            old_pfx = (row['prefix'] or '').strip().lstrip('-')
-            if old_pfx.lower() in legacy_std[j]:   # стандартные значения до миграции
-                new_pfx = DEFAULT_ORDER_PREFIX.get(j, '')
-                if old_pfx != new_pfx:
-                    conn.execute(
-                        'UPDATE order_prefixes SET prefix=? WHERE journal=?',
-                        (new_pfx, j))
-    conn.commit()
+    with _schema_lock:
+        conn.execute('BEGIN IMMEDIATE')   # защита от гонки двух потоков-миграций
+        try:
+            conn.execute(
+                'CREATE TABLE IF NOT EXISTS order_prefixes ('
+                '  journal TEXT PRIMARY KEY,'          # opeka / nuzhdaemost / profilaktika
+                "  prefix TEXT NOT NULL DEFAULT ''"    # префикс вида «ОП» -> «1-ОП»
+                ')')
+            # вид приказа -> набор старых стандартных значений (в нижнем регистре,
+            # без ведущего дефиса), подлежащих автозамене на значение по умолчанию
+            legacy_std = {
+                'opeka': {'оп'},               # старый стандарт «-ОП» -> «ОП» (v1.6.2)
+                'profilaktika': {'пр', 'п'},   # v1.6.0: «пр» -> «п»
+                'nuzhdaemost': {'ну', 'н'},    # v1.6.1: «ну» -> «н»
+            }
+            for j in JOURNAL_TYPES:
+                row = conn.execute('SELECT prefix FROM order_prefixes WHERE journal=?',
+                                   (j,)).fetchone()
+                if not row:
+                    conn.execute('INSERT INTO order_prefixes(journal, prefix) VALUES (?,?)',
+                                 (j, DEFAULT_ORDER_PREFIX.get(j, '')))
+                elif j in legacy_std:
+                    old_pfx = (row['prefix'] or '').strip().lstrip('-')
+                    if old_pfx.lower() in legacy_std[j]:   # стандартные значения до миграции
+                        new_pfx = DEFAULT_ORDER_PREFIX.get(j, '')
+                        if old_pfx != new_pfx:
+                            conn.execute(
+                                'UPDATE order_prefixes SET prefix=? WHERE journal=?',
+                                (new_pfx, j))
+            conn.execute('COMMIT')
+        except Exception:
+            conn.rollback()
+            raise
 
 
 def init_db():
@@ -1190,6 +1237,8 @@ def references():
     else:
         show_rs = [r for r in reasons_rows if r['active']]
     # справочник «Префиксы нумерации приказов» (v1.5.9)
+    ensure_schema(conn)   # v1.6.2: ленивая домиграция — защита от
+    # «no such table: order_prefixes» на базе, не обновлённой после старта
     pf_rows = conn.execute(
         'SELECT journal, prefix FROM order_prefixes ORDER BY journal').fetchall()
     prefixes = {j: '' for j in JOURNAL_TYPES}
@@ -1224,6 +1273,7 @@ def order_prefix_save():
         return redirect(url_for('references', tab='prefixes') + '#pf-list')
     conn = get_db()
     try:
+        ensure_schema(conn)   # v1.6.2: ленивая домиграция order_prefixes
         conn.execute('INSERT INTO order_prefixes(journal, prefix) VALUES (?,?) '
                      'ON CONFLICT(journal) DO UPDATE SET prefix=excluded.prefix',
                      (journal, prefix))
@@ -2867,6 +2917,7 @@ def api_order_prefixes():
     """
     u = api_user()
     conn = get_db()
+    ensure_schema(conn)   # v1.6.2: ленивая домиграция order_prefixes
     if request.method == 'POST':
         if not can_edit_order_types(u):
             conn.close(); abort(403)
