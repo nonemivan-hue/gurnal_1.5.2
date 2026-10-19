@@ -80,7 +80,7 @@ def find_free_port(start):
                 continue
     return None
 
-APP_VERSION = '1.6.1'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
+APP_VERSION = '1.6.2'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
 # 1.2.0 — поле «Примечание» во всех приказах + загрузка сотрудников и видов приказов из Excel
 # 1.2.1 — куратору разрешено редактирование справочника «Виды приказов»
 # 1.2.2 — панель загрузки приказов в журналы из Excel + подробное описание обновления программы
@@ -142,6 +142,15 @@ APP_VERSION = '1.6.1'  # 1.5.0 — клиентское приложение; 1.
 #         «Н»; добавлена идемпотентная миграция: стандартные значения «ну»/«-ну»
 #         в справочнике «Префиксы нумерации» автоматически заменяются на «Н»
 #         (пользовательские нестандартные префиксы сохраняются)
+# 1.6.2 — исправление ошибки «no such table: order_prefixes» на странице
+#         «Справочники»: при запуске поверх базы более ранней версии недостающие
+#         служебные таблицы (order_prefixes, active_sessions) создаются до
+#         остальных миграций (_ensure_required_tables); запрос списка префиксов
+#         в references() защищён от отсутствия таблицы; панель «👥 Онлайн»
+#         (активные пользователи) восстанавливается из БД даже если таблица
+#         реестра отсутствовала; в «Сервисе» доступно выборочное создание
+#         архива: документы (приказы + сканы), справочники, сотрудники —
+#         по отдельности или всё вместе (резервная копия)
 
 
 def setup_logging():
@@ -802,11 +811,47 @@ def _seed_order_prefixes(conn):
     conn.commit()
 
 
+# Таблицы, которые должны существовать в базе во всех версиях приложения.
+# Если приложение долго работало старой сборкой (или файл базы был создан
+# вручную/повреждён), в orders.db может не оказаться более новых таблиц —
+# например order_prefixes (справочник «Префиксы нумерации», v1.5.9), из-за
+# чего страница «Справочники» падала с ошибкой «no such table: order_prefixes».
+# Перед миграциями проверяем наличие этих таблиц и при отсутствии создаём их
+# (идемпотентно; содержимое существующих таблиц не затрагивается).
+REQUIRED_TABLES = ('order_prefixes', 'active_sessions')
+
+
+def _ensure_required_tables(conn):
+    """Создать недостающие служебные таблицы (см. REQUIRED_TABLES)."""
+    have = {r[0] if not isinstance(r, sqlite3.Row) else r['name']
+            for r in conn.execute("SELECT name FROM sqlite_master "
+                                  "WHERE type='table'")}
+    if 'order_prefixes' not in have:
+        # создаётся штатной миграцией _seed_order_prefixes (v1.5.9)
+        _seed_order_prefixes(conn)
+    if 'active_sessions' not in have:
+        # ВАЖНО: внутри executescript комментарии SQL недопустимы в строках,
+        # объединяемых в одно выражение — оставляем только чистый SQL.
+        conn.executescript(
+            'CREATE TABLE IF NOT EXISTS active_sessions ('
+            '  user_id INTEGER NOT NULL,'
+            "  sid TEXT NOT NULL DEFAULT '',"
+            '  last_seen REAL NOT NULL,'
+            "  ip TEXT NOT NULL DEFAULT '',"
+            '  PRIMARY KEY (user_id, sid)'
+            ');')
+        conn.commit()
+
+
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     os.makedirs(ARCHIVE_DIR, exist_ok=True)
     conn = get_db()
+    # Страховка: создаём недостающие служебные таблицы старых баз (например,
+    # order_prefixes при запуске поверх базы более ранней версии) — до всех
+    # остальных миграций и seed-заполнения
+    _ensure_required_tables(conn)
     # Миграция v1.5.8: причины могут повторяться в разных видах приказов —
     # сначала снимаем ограничение UNIQUE(name) со старых баз (до executescript,
     # чтобы seed-заполнение причин не падало на IntegrityError)
@@ -1190,8 +1235,11 @@ def references():
     else:
         show_rs = [r for r in reasons_rows if r['active']]
     # справочник «Префиксы нумерации приказов» (v1.5.9)
-    pf_rows = conn.execute(
-        'SELECT journal, prefix FROM order_prefixes ORDER BY journal').fetchall()
+    try:
+        pf_rows = conn.execute(
+            'SELECT journal, prefix FROM order_prefixes ORDER BY journal').fetchall()
+    except sqlite3.Error:   # таблицы ещё нет (миграция не выполнена) — дефолты
+        pf_rows = []
     prefixes = {j: '' for j in JOURNAL_TYPES}
     for r in pf_rows:
         if r['journal'] in prefixes:
@@ -3519,32 +3567,148 @@ def service():
                            reasons_n=reasons_n)
 
 
+# ---------------------------------------------------------------- выборочный архив (v1.6.2)
+
+# Разделы, которые можно включить в ZIP-архив выборочно («Сервис → Архивирование»):
+#   documents  — документы: приказы из журналов и связанные с ними PDF-сканы;
+#   references — справочники: виды приказов, причины, префиксы нумерации, счётчики;
+#   employees  — сотрудники (учётные записи без паролей).
+BACKUP_SECTIONS = {
+    'documents': 'Документы (приказы + сканы)',
+    'references': 'Справочники (виды, причины, префиксы)',
+    'employees': 'Сотрудники',
+}
+
+
+def _backup_dump_table(conn, section, table, where=None, order_by=None):
+    """Выгрузить таблицу в JSON-список строк для секции архива."""
+    q = f'SELECT * FROM {table}'
+    if where:
+        q += f' WHERE {where}'
+    if order_by:
+        q += f' ORDER BY {order_by}'
+    try:
+        rows = [dict(r) for r in conn.execute(q)]
+    except sqlite3.Error:      # таблицы ещё нет в старой базе — пропускаем
+        rows = []
+    return {f'{section}.{table}': rows}
+
+
+def _build_backup_zip(sections, zpath):
+    """Создать ZIP-архив выбранных разделов данных.
+
+    sections — набор ключей BACKUP_SECTIONS. Полная резервная копия
+    ('full' в составе sections) включает базу целиком (orders.db) и все
+    сканы — формат совместим с восстановлением («Сервис → Восстановление»).
+    Выборочные разделы сохраняются отдельными JSON-файлами в папке dump/
+    плюс список затребованных разделов в manifest.json.
+    Возвращает словарь со статистикой: {'orders': n, 'scans': n, ...}.
+    """
+    import zipfile
+    full = 'full' in sections
+    stats = {}
+    conn = get_db()
+    try:
+        with zipfile.ZipFile(zpath, 'w', zipfile.ZIP_DEFLATED) as zf:
+            if full:
+                # полная копия: снимок базы + все загруженные сканы
+                tmpdb = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
+                tmpdb.close()
+                try:
+                    src = get_db()
+                    dst = sqlite3.connect(tmpdb.name)
+                    src.backup(dst)
+                    src.close(); dst.close()
+                    zf.write(tmpdb.name, 'orders.db')
+                finally:
+                    os.unlink(tmpdb.name)
+                if os.path.isdir(UPLOAD_DIR):
+                    for root, _dirs, files in os.walk(UPLOAD_DIR):
+                        for fn in files:
+                            zf.write(os.path.join(root, fn),
+                                     'scans/' + os.path.relpath(
+                                         os.path.join(root, fn), UPLOAD_DIR)
+                                         .replace(os.sep, '/'))
+                stats['scans'] = len(zf.namelist()) - 1
+                return stats
+            # ---- выборочный архив: JSON-выгрузки по разделам ----
+            data = {}
+            if 'documents' in sections:
+                data.update(_backup_dump_table(conn, 'documents', 'orders',
+                                               order_by='journal, order_date, id'))
+                stats['orders'] = len(data.get('documents.orders', []))
+                # сканы только тех приказов, что выгружены
+                scan_names = [r['scan_path'] for r in data.get(
+                    'documents.orders', []) if r.get('scan_path')]
+                n_scans = 0
+                for name in scan_names:
+                    p = os.path.join(UPLOAD_DIR, os.path.basename(name or ''))
+                    if os.path.exists(p):
+                        zf.write(p, 'scans/' + os.path.basename(p))
+                        n_scans += 1
+                stats['scans'] = n_scans
+            if 'references' in sections:
+                for t in ('order_types', 'reasons', 'order_prefixes', 'counters'):
+                    data.update(_backup_dump_table(conn, 'references', t))
+                stats['references'] = sum(
+                    len(v) for k, v in data.items()
+                    if k.startswith('references.'))
+            if 'employees' in sections:
+                # пароли и хеши в выборочный архив не попадают
+                q = ('SELECT id, full_name, position, login, role_id, '
+                     'pwd_changed_at FROM employees ORDER BY full_name')
+                try:
+                    rows = [dict(r) for r in conn.execute(q)]
+                except sqlite3.Error:
+                    rows = []
+                data.update({'employees.employees': rows})
+                stats['employees'] = len(rows)
+            manifest = {'app': 'Журнал регистрации приказов',
+                        'version': APP_VERSION,
+                        'created': datetime.now().isoformat(timespec='seconds'),
+                        'sections': sorted(sections),
+                        'note': 'Выборочный архив: данные в dump/*.json '
+                                '(восстанавливаются вручную или через полную БД)'}
+            zf.writestr('manifest.json',
+                        json.dumps(manifest, ensure_ascii=False, indent=2))
+            for key, rows in data.items():
+                zf.writestr(f'dump/{key}.json',
+                            json.dumps(rows, ensure_ascii=False, indent=1))
+    finally:
+        conn.close()
+    return stats
+
+
 @app.route('/service/backup', methods=['POST'])
 def service_backup():
     if not is_admin():
         abort(403)
+    # выбор разделов для архива (v1.6.2); если отмечены все три — это полная
+    # резервная копия (совместима с восстановлением: orders.db + scans/)
+    sel = set(request.form.getlist('section'))
+    known = {k for k in sel if k in BACKUP_SECTIONS}
+    if not known:
+        known = set(BACKUP_SECTIONS)          # ничего не выбрано — полная копия
+    full = known == set(BACKUP_SECTIONS)
+    sections = known | ({'full'} if full else set())
     stamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    tmp = tempfile.mkdtemp(prefix='backup_')
+    prefix_name = 'backup' if full else 'archive_' + '_'.join(sorted(known))
+    os.makedirs(ARCHIVE_DIR, exist_ok=True)
+    zpath = os.path.join(ARCHIVE_DIR, f'{prefix_name}_{stamp}.zip')
     try:
-        dbcopy = os.path.join(tmp, 'orders.db')
-        src = get_db()
-        dst = sqlite3.connect(dbcopy)
-        src.backup(dst)
-        src.close()
-        dst.close()
-        scans_dir = os.path.join(tmp, 'scans')
-        if os.path.isdir(UPLOAD_DIR):
-            shutil.copytree(UPLOAD_DIR, scans_dir)
-        zipname = f'backup_{stamp}.zip'
-        zpath = os.path.join(ARCHIVE_DIR, zipname)
-        os.makedirs(ARCHIVE_DIR, exist_ok=True)
-        shutil.make_archive(zpath[:-4], 'zip', tmp)
-        audit('РЕЗЕРВНАЯ КОПИЯ СОЗДАНА', zipname)
-        flash(f'Архив создан: {zipname}', 'ok')
+        stats = _build_backup_zip(sections, zpath)
+        desc = ', '.join(BACKUP_SECTIONS[k] for k in sorted(known))
+        detail = '; '.join(f'{k}: {v}' for k, v in sorted(stats.items()))
+        audit(('РЕЗЕРВНАЯ КОПИЯ СОЗДАНА' if full else 'АРХИВ СОЗДАН (ВЫБОРОЧНО)'),
+              f'{os.path.basename(zpath)} | разделы: {desc} | {detail}')
+        flash(f'Архив создан: {os.path.basename(zpath)} ({detail or "без данных"})', 'ok')
     except Exception as e:
+        if os.path.exists(zpath):
+            try:
+                os.remove(zpath)
+            except OSError:
+                pass
         flash(f'Ошибка создания архива: {e}', 'err')
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
     return redirect(url_for('service'))
 
 
