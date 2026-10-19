@@ -176,3 +176,4 @@ sqlite3.IntegrityError: UNIQUE constraint failed: reasons.name
 2026-10-16 14:44:48 | INFO     | [HTTP] GET /api/v1/order_types -> 200 (IP: 127.0.0.1, user_id: -)
 2026-10-16 14:44:48 | INFO     | [АУДИТ] ПРИКАЗ СОЗДАН (API) | пользователь: id=Системный администратор (admin) | IP: 127.0.0.1 | журнал=Опека, №=1-ОП, по кому=Тестовый Т.Т.
 2026-10-16 14:44:48 | INFO     | [HTTP] POST /api/v1/journal/opeka/orders -> 201 (IP: 127.0.0.1, user_id: -)
+2026-10-19 05:57:56 | WARNING  | [HTTP] GET /api/v1/order_prefixes -> 401 (IP: 127.0.0.1, user_id: -)
