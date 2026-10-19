@@ -177,3 +177,12 @@ sqlite3.IntegrityError: UNIQUE constraint failed: reasons.name
 2026-10-16 14:44:48 | INFO     | [АУДИТ] ПРИКАЗ СОЗДАН (API) | пользователь: id=Системный администратор (admin) | IP: 127.0.0.1 | журнал=Опека, №=1-ОП, по кому=Тестовый Т.Т.
 2026-10-16 14:44:48 | INFO     | [HTTP] POST /api/v1/journal/opeka/orders -> 201 (IP: 127.0.0.1, user_id: -)
 2026-10-19 05:57:56 | WARNING  | [HTTP] GET /api/v1/order_prefixes -> 401 (IP: 127.0.0.1, user_id: -)
+2026-10-19 14:25:32 | INFO     | Сервер запущен: http://0.0.0.0:8080 (версия 1.6.2, логи: /workspace/data/logs/app.log)
+2026-10-19 14:25:42 | INFO     | [HTTP] GET /login -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-19 14:25:42 | INFO     | [HTTP] GET /references -> 302 (IP: 127.0.0.1, user_id: -)
+2026-10-19 14:26:02 | INFO     | Сервер запущен: http://0.0.0.0:8080 (версия 1.6.2, логи: /workspace/data/logs/app.log)
+2026-10-19 14:26:10 | INFO     | [HTTP] GET /references -> 302 (IP: 127.0.0.1, user_id: -)
+2026-10-19 14:26:18 | INFO     | [АУДИТ] ВХОД В СИСТЕМУ | пользователь: Тест Тестович (_test_login) | IP: 127.0.0.1 | роль: Администратор
+2026-10-19 14:26:18 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 2)
+2026-10-19 14:26:18 | INFO     | [HTTP] GET / -> 200 (IP: 127.0.0.1, user_id: 2)
+2026-10-19 14:26:18 | INFO     | [HTTP] GET /references -> 200 (IP: 127.0.0.1, user_id: 2)

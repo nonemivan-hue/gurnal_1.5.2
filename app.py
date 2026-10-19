@@ -830,11 +830,13 @@ def _ensure_required_tables(conn):
         # создаётся штатной миграцией _seed_order_prefixes (v1.5.9)
         _seed_order_prefixes(conn)
     if 'active_sessions' not in have:
+        # ВАЖНО: внутри executescript комментарии SQL недопустимы в строках,
+        # объединяемых в одно выражение — оставляем только чистый SQL.
         conn.executescript(
             'CREATE TABLE IF NOT EXISTS active_sessions ('
             '  user_id INTEGER NOT NULL,'
-            "  sid TEXT NOT NULL DEFAULT '',"      -- подпись cookie-сессии
-            '  last_seen REAL NOT NULL,'           -- unix-time последней активности
+            "  sid TEXT NOT NULL DEFAULT '',"
+            '  last_seen REAL NOT NULL,'
             "  ip TEXT NOT NULL DEFAULT '',"
             '  PRIMARY KEY (user_id, sid)'
             ');')
