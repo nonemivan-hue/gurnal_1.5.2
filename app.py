@@ -80,7 +80,7 @@ def find_free_port(start):
                 continue
     return None
 
-APP_VERSION = '1.6.3'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
+APP_VERSION = '1.6.4'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
 # 1.2.0 — поле «Примечание» во всех приказах + загрузка сотрудников и видов приказов из Excel
 # 1.2.1 — куратору разрешено редактирование справочника «Виды приказов»
 # 1.2.2 — панель загрузки приказов в журналы из Excel + подробное описание обновления программы
@@ -157,6 +157,17 @@ APP_VERSION = '1.6.3'  # 1.5.0 — клиентское приложение; 1.
 #         (панель «👥 Онлайн» в шапке для Администратора, Куратора и
 #         Начальника отдела; API /api/active_users, автообновление каждые
 #         30 секунд)
+# 1.6.4 — исправления по результатам сравнения репозиториев: клиентское
+#         приложение client_app.py экранирует URL (кириллица в query больше не
+#         приводит к падению 'ascii' codec — поиск ?q=Тестовый, параметры
+#         отчётов работают); GET /api/v1/order_types выполняет ленивую
+#         домиграцию order_prefixes (защита от 500 на необновлённой базе);
+#         _api_reason_id передаёт вид приказа при авторегистрации причины из
+#         API (причина создаётся в справочнике своего вида, а не «Опека»);
+#         убраны устаревшие комментарии о причине только в «Опеке»; тесты
+#         работают на изолированной копии БД (не оставляют тестовых данных),
+#         из индекса git удалены __pycache__ и runtime-файлы data/, в
+#         .gitignore добавлены *.sqlite3 и backups/
 
 
 def setup_logging():
@@ -2896,6 +2907,9 @@ def api_order_types():
                           'journal': r['journal'] if 'journal' in r.keys() else None}
                          for r in rows])
     conn = get_db()
+    ensure_schema(conn)   # v1.6.2: ленивая домиграция справочника префиксов —
+    # GET не должен падать на 500 («no such table: order_prefixes») при первом
+    # обращении к ещё не обновлённой базе
     if journal:
         if journal not in JOURNAL_TYPES or not can_access_journal(u, journal):
             conn.close(); abort(403)
@@ -3106,10 +3120,12 @@ def api_orders(journal):
 
 
 def _api_reason_id(conn, journal, data):
-    """reason_id для API-запроса: только в журнале «Опека» (справочник «Причины»).
+    """reason_id для API-запроса: поле «Причина» доступно во всех журналах
+    (v1.5.6); справочник разделён по видам приказов — причина ищется/создаётся
+    в рамках своего вида.
 
     Принимается готовый reason_id или наименование reason (регистрируется в
-    справочнике автоматически). Для остальных журналов — всегда None.
+    справочнике автоматически). Для выключенных журналов — всегда None.
     """
     if not REASONS_ENABLED.get(journal):
         return None
@@ -3118,7 +3134,7 @@ def _api_reason_id(conn, journal, data):
         ok = conn.execute('SELECT 1 FROM reasons WHERE id=?', (int(rid),)).fetchone()
         if ok:
             return int(rid)
-    return _get_or_create_reason(conn, data.get('reason') or '')
+    return _get_or_create_reason(conn, data.get('reason') or '', journal)
 
 
 @app.route('/api/v1/journal/<journal>/orders', methods=['POST'])
@@ -3308,8 +3324,8 @@ def api_report_journal_print():
         abort(404)
     d1, d2 = _report_period()
     rows = _query_report_rows_sorted_asc(d1, d2, journal=journal)
-    # та же логика, что и в веб-отчёте: Опека — наименование + (причина),
-    # Нуждаемость/Профилактика — только наименование приказа
+    # та же логика, что и в веб-отчёте: для всех видов приказа наименование =
+    # вид приказа + (причина), если причина указана — иначе только наименование
     with_reason = REASONS_ENABLED.get(journal, False)
     data = []
     for i, r in enumerate(rows, 1):

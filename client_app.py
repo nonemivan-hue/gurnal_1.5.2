@@ -65,8 +65,22 @@ class ServerClient:
         token = f'{login}:{password}'.encode('utf-8')
         self.auth = 'Basic ' + base64.b64encode(token).decode('ascii')
 
+    @staticmethod
+    def _encode_url(url):
+        """Экранирование URL (v1.6.4).
+
+        urllib.request не умеет отправлять не-ASCII символы в пути/запросе:
+        кириллица в query (например, ?q=Тестовый или &journal=Опека) приводила
+        к падению на уровне сокета ('ascii' codec can't encode characters).
+        Кодируем только сам URL (safe-символы сохраняются), тело запроса не
+        затрагивается — оно уходит как UTF-8 bytes с явным charset.
+        Повторное кодирование уже закодированных последовательностей %XX
+        безопасно: '%' входит в список safe.
+        """
+        return urllib.parse.quote(url, safe=":/?&=%#[]@!$'()*,;+-._~")
+
     def _request(self, path, method='GET', data=None, files=None, raw=False):
-        url = self.base + path
+        url = self._encode_url(self.base + path)
         headers = {'Authorization': self.auth}
         body = None
         if files is not None:                      # multipart/form-data
