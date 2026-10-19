@@ -80,7 +80,7 @@ def find_free_port(start):
                 continue
     return None
 
-APP_VERSION = '1.5.8'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
+APP_VERSION = '1.6.0'  # 1.5.0 — клиентское приложение; 1.5.1 — поддержка сборки PyInstaller
 # 1.2.0 — поле «Примечание» во всех приказах + загрузка сотрудников и видов приказов из Excel
 # 1.2.1 — куратору разрешено редактирование справочника «Виды приказов»
 # 1.2.2 — панель загрузки приказов в журналы из Excel + подробное описание обновления программы
@@ -125,6 +125,18 @@ APP_VERSION = '1.5.8'  # 1.5.0 — клиентское приложение; 1.
 #         снято ограничение UNIQUE(name) (миграция пересоздаёт таблицу без
 #         него с сохранением id и связей приказов); проверка дублей при
 #         ручном вводе и через API — только в рамках своего вида приказа
+# 1.5.9 — префиксы нумерации приказов вынесены в отдельный справочник
+#         «Префиксы нумерации» (вкладка «Справочники», таблица order_prefixes):
+#         Опека — «ОП» (1-ОП), Нуждаемость — номер + «Н» (5-Н), Профилактика —
+#         «ПР»; API /api/v1/order_prefixes; старые настройки колонки
+#         prefix таблицы order_types поддерживаются как откат (fallback)
+# 1.6.0 — префикс приказа «Профилактика» (признание) изменён на «п» вместо
+#         «пр»: примеры номеров — «7-П» (ранее «7-ПР»). Обновлены значения по
+#         умолчанию (DEFAULT_ORDER_PREFIX, JOURNAL_SUFFIX); миграция при запуске
+#         автоматически заменяет стандартное значение «ПР» в справочнике
+#         «Префиксы нумерации» на «П» (пользовательские нестандартные префиксы
+#         сохраняются); подсказки во вкладке «Справочники → Префиксы нумерации»
+#         обновлены
 
 
 def setup_logging():
@@ -219,8 +231,18 @@ JOURNAL_TITLES = {
 }
 JOURNAL_SUFFIX = {  # суффикс номера приказа по умолчанию (если префикс не задан)
     'opeka': '-оп',
-    'nuzhdaemost': '-ну',
-    'profilaktika': '-пр',
+    'nuzhdaemost': '-н',   # Нуждаемость: номер + «н» (напр. «5-Н», v1.5.9)
+    'profilaktika': '-п',  # Профилактика (признание): номер + «п» (v1.6.0, вместо «-пр»)
+}
+# Префиксы нумерации приказов по умолчанию (v1.5.9): значение приводится
+# функцией journal_prefix к виду «-ОП». Нуждаемость — номер + «н» (напр. «5-Н»).
+# v1.6.0: профилактика (приказы «признание», снятие/проведение учёта) — префикс
+# «п» вместо «пр» (напр. «7-П»); при переносе данных старые значения «пр»/«ПР»
+# автоматически заменяются на «п» (см. _seed_order_prefixes).
+DEFAULT_ORDER_PREFIX = {
+    'opeka': 'ОП',
+    'nuzhdaemost': 'Н',
+    'profilaktika': 'П',
 }
 # Поле «Причина» есть во всех журналах (Опека / Нуждаемость / Профилактика);
 # данные — из справочника «Причины», который разделён по видам приказов (v1.5.6)
@@ -303,23 +325,36 @@ def _get_or_create_reason(conn, name, journal=None):
 
 
 def journal_prefix(conn, journal):
-    """Префикс номера приказа для журнала (настройка в справочнике «Виды приказов»).
+    """Префикс номера приказа для журнала (справочник «Префиксы нумерации»).
 
-    Префиксы хранятся в таблице order_types в колонке prefix: строка с непустым
-    prefix и есть настройка вида приказа. Значение приводится к виду «-ОП»:
-    добавляется ведущий дефис, пробелы убираются. Пустой префикс -> используется
-    суффикс журнала по умолчанию (JOURNAL_SUFFIX). Пример: вид «Опека»,
-    префикс «ОП», номер 1 -> «1-ОП».
+    Основной источник — таблица order_prefixes (v1.5.9, отдельный справочник:
+    по одной строке на вид приказа). Для старых баз сохранён откат на колонку
+    prefix таблицы order_types: строка с непустым prefix и есть настройка вида
+    приказа. Значение приводится к виду «-ОП»: добавляется ведущий дефис,
+    пробелы убираются. Пустой префикс -> используется суффикс журнала по
+    умолчанию (JOURNAL_SUFFIX). Пример: вид «Опека», префикс «ОП», номер 1 ->
+    «1-ОП»; Нуждаемость, префикс «Н», номер 5 -> «5-Н».
     """
-    try:
+    p = None
+    try:  # справочник префиксов нумерации приказов (v1.5.9)
         row = conn.execute(
-            "SELECT prefix FROM order_types WHERE kind=? AND TRIM(COALESCE(prefix,''))<>''"
-            ' ORDER BY id LIMIT 1', (journal,)).fetchone()
-    except sqlite3.Error:   # колонки ещё нет (миграция не выполнена) — дефолт
+            "SELECT prefix FROM order_prefixes WHERE journal=?",
+            (journal,)).fetchone()
+        if row and (row['prefix'] or '').strip():
+            p = row['prefix'].strip()
+    except sqlite3.Error:   # таблицы ещё нет (миграция не выполнена)
         row = None
-    if not row or not (row['prefix'] or '').strip():
-        return JOURNAL_SUFFIX.get(journal, '')
-    p = row['prefix'].strip().upper() if row['prefix'].strip().isascii() else row['prefix'].strip()
+    if p is None:
+        try:  # откат на старую настройку в справочнике видов приказов (v1.5.0)
+            row = conn.execute(
+                "SELECT prefix FROM order_types WHERE kind=? AND TRIM(COALESCE(prefix,''))<>''"
+                ' ORDER BY id LIMIT 1', (journal,)).fetchone()
+        except sqlite3.Error:   # колонки ещё нет (миграция не выполнена) — дефолт
+            row = None
+        if not row or not (row['prefix'] or '').strip():
+            return JOURNAL_SUFFIX.get(journal, '')
+        p = row['prefix'].strip()
+    p = p.upper() if p.isascii() else p
     if not p.startswith('-'):
         p = '-' + p
     return p
@@ -716,6 +751,41 @@ def _drop_reasons_unique_index(conn):
         conn.execute('PRAGMA foreign_keys = ON')
 
 
+def _seed_order_prefixes(conn):
+    """Справочник префиксов нумерации приказов (v1.5.9).
+
+    Префиксы хранятся в отдельной таблице order_prefixes (по одной строке на
+    вид приказа); при отсутствии строк заполняются значениями по умолчанию
+    DEFAULT_ORDER_PREFIX (Опека — «-ОП», Нуждаемость — номер + «Н»,
+    Профилактика — номер + «П»). Существующие настройки пользователя не
+    перезаписываются.
+
+    Миграция v1.6.0: у вида «Профилактика» (приказы «признание») префикс «п»
+    вместо «пр» — старые стандартные значения «пр»/«-пр» автоматически
+    заменяются на «п». Пользовательский нестандартный префикс сохраняется.
+    """
+    conn.execute(
+        'CREATE TABLE IF NOT EXISTS order_prefixes ('
+        '  journal TEXT PRIMARY KEY,'          # opeka / nuzhdaemost / profilaktika
+        '  prefix TEXT NOT NULL DEFAULT \'\''  # префикс вида «ОП» -> «1-ОП»
+        ')')
+    for j in JOURNAL_TYPES:
+        row = conn.execute('SELECT prefix FROM order_prefixes WHERE journal=?',
+                           (j,)).fetchone()
+        if not row:
+            conn.execute('INSERT INTO order_prefixes(journal, prefix) VALUES (?,?)',
+                         (j, DEFAULT_ORDER_PREFIX.get(j, '')))
+        elif j == 'profilaktika':
+            old_pfx = (row['prefix'] or '').strip().lstrip('-')
+            if old_pfx.lower() in ('пр', 'п'):   # стандартные значения до v1.6.0
+                new_pfx = DEFAULT_ORDER_PREFIX.get(j, '')
+                if old_pfx != new_pfx:
+                    conn.execute(
+                        'UPDATE order_prefixes SET prefix=? WHERE journal=?',
+                        (new_pfx, j))
+    conn.commit()
+
+
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -726,6 +796,8 @@ def init_db():
     # чтобы seed-заполнение причин не падало на IntegrityError)
     _drop_reasons_unique_index(conn)
     conn.executescript(SCHEMA)
+    # Справочник префиксов нумерации приказов (v1.5.9): отдельная таблица
+    _seed_order_prefixes(conn)
     # Миграция: добавляем колонку pwd_changed_at в существующих базах
     cols = [c['name'] for c in conn.execute('PRAGMA table_info(employees)')]
     if 'pwd_changed_at' not in cols:
@@ -1083,7 +1155,7 @@ def references():
     """
     require_login()
     tab = request.args.get('tab', 'order_types')
-    if tab not in ('order_types', 'reasons'):
+    if tab not in ('order_types', 'reasons', 'prefixes'):
         tab = 'order_types'
     user = current_user()
     conn = get_db()
@@ -1101,16 +1173,51 @@ def references():
         show_rs = list(reasons_rows)
     else:
         show_rs = [r for r in reasons_rows if r['active']]
+    # справочник «Префиксы нумерации приказов» (v1.5.9)
+    pf_rows = conn.execute(
+        'SELECT journal, prefix FROM order_prefixes ORDER BY journal').fetchall()
+    prefixes = {j: '' for j in JOURNAL_TYPES}
+    for r in pf_rows:
+        if r['journal'] in prefixes:
+            prefixes[r['journal']] = r['prefix']
     conn.close()
     return render_template(
         'references.html', tab=tab,
         order_types_rows=ot_rows, order_types_n=len(ot_rows),
         reasons_rows=show_rs, reasons_n=len(show_rs),
         reasons_total=len(reasons_rows), reasons_dupes=rs_dupes,
+        prefixes=prefixes, default_prefixes=DEFAULT_ORDER_PREFIX,
         all_journals=[(j, JOURNAL_TITLES[j]) for j in JOURNAL_TYPES],
         journal_titles=JOURNAL_TITLES,
         can_edit_ot=can_edit_order_types(user),
         can_edit_rs=can_edit_reasons(user))
+
+
+# ---------------------------------------------------------------- справочник префиксов нумерации
+
+@app.route('/order_prefixes/save', methods=['POST'])
+def order_prefix_save():
+    """Сохранить префикс номера приказа для вида (справочник «Префиксы», v1.5.9)."""
+    user = current_user()
+    if not can_edit_order_types(user):
+        abort(403)
+    journal = (request.form.get('journal') or '').strip()
+    prefix = _norm(request.form.get('prefix') or '').strip()
+    if journal not in JOURNAL_TYPES:
+        flash('Неизвестный вид приказа', 'err')
+        return redirect(url_for('references', tab='prefixes') + '#pf-list')
+    conn = get_db()
+    try:
+        conn.execute('INSERT INTO order_prefixes(journal, prefix) VALUES (?,?) '
+                     'ON CONFLICT(journal) DO UPDATE SET prefix=excluded.prefix',
+                     (journal, prefix))
+        conn.commit()
+        audit('ПРЕФИКС НУМЕРАЦИИ ИЗМЕНЁН',
+              f'{JOURNAL_TITLES.get(journal, journal)}: «{prefix}»')
+        flash('Префикс сохранён', 'ok')
+    finally:
+        conn.close()
+    return redirect(url_for('references', tab='prefixes') + '#pf-list')
 
 
 # ---------------------------------------------------------------- справочник видов приказов
@@ -2720,10 +2827,53 @@ def api_order_types():
                             (journal,)).fetchall()
     else:
         rows = conn.execute('SELECT * FROM order_types ORDER BY kind, name').fetchall()
+    # справочник «Префиксы нумерации приказов» (v1.5.9): отдельный GET-запрос
+    prefixes = {}
+    try:
+        for pr in conn.execute('SELECT journal, prefix FROM order_prefixes').fetchall():
+            prefixes[pr['journal']] = pr['prefix']
+    except sqlite3.Error:   # миграция ещё не выполнена
+        pass
     conn.close()
     return api_json([{'id': r['id'], 'kind': r['kind'],
                       'kind_title': JOURNAL_TITLES.get(r['kind'], r['kind']),
-                      'name': r['name']} for r in rows])
+                      'name': r['name'],
+                      'prefix': prefixes.get(r['kind'], '')} for r in rows])
+
+
+@app.route('/api/v1/order_prefixes', methods=['GET', 'POST'])
+def api_order_prefixes():
+    """Справочник префиксов нумерации приказов (v1.5.9).
+
+    GET — список {journal, title, prefix} по всем видам; POST (JSON
+    {journal, prefix}) — сохранить префикс вида. Доступ — как у справочника
+    «Виды приказов» (Администратор / Куратор / Начальник отдела).
+    """
+    u = api_user()
+    conn = get_db()
+    if request.method == 'POST':
+        if not can_edit_order_types(u):
+            conn.close(); abort(403)
+        data = request.get_json(silent=True) or {}
+        journal = _norm(data.get('journal') or '').strip()
+        prefix = _norm(data.get('prefix') or '').strip()
+        if journal not in JOURNAL_TYPES:
+            conn.close()
+            return api_json({'error': 'Неизвестный вид приказа'}, 400)
+        conn.execute('INSERT INTO order_prefixes(journal, prefix) VALUES (?,?) '
+                     'ON CONFLICT(journal) DO UPDATE SET prefix=excluded.prefix',
+                     (journal, prefix))
+        conn.commit()
+        conn.close()
+        audit('ПРЕФИКС НУМЕРАЦИИ ИЗМЕНЁН (API)',
+              f'{JOURNAL_TITLES.get(journal, journal)}: «{prefix}»',
+              user=f"{u['full_name']} ({u['login']})")
+        return api_json({'ok': True, 'journal': journal, 'prefix': prefix})
+    rows = conn.execute('SELECT journal, prefix FROM order_prefixes').fetchall()
+    conn.close()
+    return api_json([{'journal': r['journal'],
+                      'title': JOURNAL_TITLES.get(r['journal'], r['journal']),
+                      'prefix': r['prefix']} for r in rows])
 
 
 # ---------------------------------------------------------------- справочник «Причины» (API, v1.5.4)

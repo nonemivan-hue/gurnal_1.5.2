@@ -164,3 +164,15 @@ sqlite3.IntegrityError: UNIQUE constraint failed: reasons.name
 2026-10-16 12:23:48 | INFO     | [HTTP] POST /login -> 302 (IP: 127.0.0.1, user_id: 1)
 2026-10-16 12:23:48 | INFO     | [АУДИТ] ИМПОРТ ВИДОВ ПРИКАЗОВ ИЗ EXCEL | пользователь: Системный администратор (admin) | IP: 127.0.0.1 | файл=t.xlsx, создано=1, пропущено=0
 2026-10-16 12:23:48 | INFO     | [HTTP] POST /order_types/import -> 302 (IP: 127.0.0.1, user_id: 1)
+2026-10-16 14:44:15 | INFO     | Сервер запущен: http://0.0.0.0:8080 (версия 1.6.0, логи: /workspace/data/logs/app.log)
+2026-10-16 14:44:18 | WARNING  | [HTTP] GET /api/v1/order_prefixes -> 401 (IP: 127.0.0.1, user_id: -)
+2026-10-16 14:44:18 | WARNING  | [HTTP] POST /api/v1/login -> 404 (IP: 127.0.0.1, user_id: -)
+2026-10-16 14:44:33 | WARNING  | [HTTP] POST /api/v1/login -> 404 (IP: 127.0.0.1, user_id: -)
+2026-10-16 14:44:41 | INFO     | [HTTP] POST /login -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-16 14:44:41 | WARNING  | [БЕЗОПАСНОСТЬ] Неудачная попытка входа: логин '' от IP 127.0.0.1
+2026-10-16 14:44:41 | WARNING  | [HTTP] GET /api/v1/order_prefixes -> 401 (IP: 127.0.0.1, user_id: -)
+2026-10-16 14:44:48 | INFO     | [HTTP] GET /api/v1/session -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-16 14:44:48 | INFO     | [HTTP] GET /api/v1/employees -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-16 14:44:48 | INFO     | [HTTP] GET /api/v1/order_types -> 200 (IP: 127.0.0.1, user_id: -)
+2026-10-16 14:44:48 | INFO     | [АУДИТ] ПРИКАЗ СОЗДАН (API) | пользователь: id=Системный администратор (admin) | IP: 127.0.0.1 | журнал=Опека, №=1-ОП, по кому=Тестовый Т.Т.
+2026-10-16 14:44:48 | INFO     | [HTTP] POST /api/v1/journal/opeka/orders -> 201 (IP: 127.0.0.1, user_id: -)
