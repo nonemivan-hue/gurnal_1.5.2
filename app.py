@@ -80,7 +80,7 @@ def find_free_port(start):
                 continue
     return None
 
-APP_VERSION = '1.6.3'  # 1.5.0 — клиентское приложение; 1.5.1 — PyInstaller; 1.6.3 — смена паролей администратором
+APP_VERSION = '1.6.4'  # 1.6.3 — смена паролей администратором; 1.6.4 — отчёт «Время в сети»
 # 1.2.0 — поле «Примечание» во всех приказах + загрузка сотрудников и видов приказов из Excel
 # 1.2.1 — куратору разрешено редактирование справочника «Виды приказов»
 # 1.2.2 — панель загрузки приказов в журналы из Excel + подробное описание обновления программы
@@ -527,6 +527,11 @@ def touch_active_session(uid):
     # в БД пишем не на каждый запрос, а не чаще раза в 10 секунд на сессию
     if _db_touch_throttled((uid, sid)):
         db_touch_active_session(uid, sid, ip)
+    # учёт времени пребывания в сети для отчёта Администратора (v1.6.4):
+    # продлевает текущий интервал присутствия либо открывает новый;
+    # пишется в БД не чаще раза в 30 секунд на сессию (не грузим базу)
+    if _db_touch_throttled(('online', uid, sid), min_interval=30.0):
+        online_track_touch(uid, sid, ip)
 
 
 def drop_active_session(uid, sid=None):
@@ -552,6 +557,82 @@ def cleanup_active_sessions():
         for k in expired:
             del ACTIVE_SESSIONS[k]
     db_cleanup_active_sessions(cutoff)
+
+
+# --- Учёт времени пользователей в сети (отчёт «⏱ Время в сети», v1.6.4) ---
+# Активность одного сотрудника «склеивается» в сессию пребывания в сети:
+# пока запросы идут чаще ONLINE_GAP секунд, текущая запись в user_online_log
+# продлевается; как только разрыв превышает ONLINE_GAP (или пользователь вышел) —
+# начинается новая запись. Записи хранятся по 365 дней (online_purge_old).
+ONLINE_GAP = max(ACTIVE_TIMEOUT, 300)   # сек. допустимого простоя внутри сессии
+ONLINE_LOG_RETENTION_DAYS = 365         # сколько дней истории хранить в БД
+
+
+def _online_day(ts):
+    return datetime.fromtimestamp(ts).date().isoformat()
+
+
+def online_track_touch(uid, sid, ip):
+    """Отметить активность пользователя для отчёта о времени в сети.
+
+    Вызывается из touch_active_session на каждом запросе авторизованного
+    пользователя. Ищем последнюю запись этого пользователя и этой сессии:
+    если простой не больше ONLINE_GAP — продлеваем её (обновляем logout_ts),
+    иначе закрываем старую и открываем новый интервал присутствия.
+    """
+    now = time.time()
+    try:
+        conn = get_db()
+        row = conn.execute(
+            'SELECT id, logout_ts FROM user_online_log '
+            'WHERE user_id=? AND sid=? ORDER BY logout_ts DESC LIMIT 1',
+            (uid, sid or '')).fetchone()
+        if row and now - row['logout_ts'] <= ONLINE_GAP \
+                and _online_day(now) == _online_day(row['logout_ts']):
+            conn.execute('UPDATE user_online_log SET logout_ts=?, ip=? WHERE id=?',
+                         (now, ip or '', row['id']))
+        else:
+            conn.execute(
+                'INSERT INTO user_online_log(user_id, sid, day, login_ts, '
+                'logout_ts, ip) VALUES(?,?,?,?,?,?)',
+                (uid, sid or '', _online_day(now), now, now, ip or ''))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # учёт не должен влиять на основную работу приложения
+
+
+def online_close_session(uid, sid=None):
+    """Явно закрыть сессию времени в сети при выходе пользователя:
+    ставим logout_ts равным текущему моменту (дальнейшие запросы создадут
+    уже новый интервал)."""
+    try:
+        conn = get_db()
+        now = time.time()
+        if sid is not None:
+            conn.execute(
+                'UPDATE user_online_log SET logout_ts=? WHERE user_id=? AND sid=? '
+                'AND ? - logout_ts <= ?', (now, uid, sid or '', now, ONLINE_GAP))
+        else:
+            conn.execute(
+                'UPDATE user_online_log SET logout_ts=? WHERE user_id=? '
+                'AND ? - logout_ts <= ?', (now, uid, now, ONLINE_GAP))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+def online_purge_old():
+    """Удалить историю времени в сети старше ONLINE_LOG_RETENTION_DAYS."""
+    try:
+        cutoff = time.time() - ONLINE_LOG_RETENTION_DAYS * 86400
+        conn = get_db()
+        conn.execute('DELETE FROM user_online_log WHERE logout_ts < ?', (cutoff,))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 
 def get_active_users():
@@ -713,6 +794,15 @@ CREATE TABLE IF NOT EXISTS active_sessions (
     ip TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (user_id, sid)
 );                     -- реестр активных пользователей (переживает перезапуск)
+CREATE TABLE IF NOT EXISTS user_online_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,          -- сотрудник (employees.id)
+    sid TEXT NOT NULL DEFAULT '',      -- подпись cookie-сессии (устройства учит. раздельно)
+    day TEXT NOT NULL,                 -- локальная дата ГГГГ-ММ-ДД
+    login_ts REAL NOT NULL,            -- unix-time начала интервала присутствия
+    logout_ts REAL NOT NULL,           -- unix-time окончания интервала (последний запрос)
+    ip TEXT NOT NULL DEFAULT ''
+);   -- история времени пользователей в сети (отчёт для Администратора, v1.6.4)
 CREATE TABLE IF NOT EXISTS user_prefs (
     user_id INTEGER NOT NULL REFERENCES employees(id),
     key TEXT NOT NULL,                 -- напр. journal_period.opeka
@@ -818,7 +908,7 @@ def _seed_order_prefixes(conn):
 # чего страница «Справочники» падала с ошибкой «no such table: order_prefixes».
 # Перед миграциями проверяем наличие этих таблиц и при отсутствии создаём их
 # (идемпотентно; содержимое существующих таблиц не затрагивается).
-REQUIRED_TABLES = ('order_prefixes', 'active_sessions')
+REQUIRED_TABLES = ('order_prefixes', 'active_sessions', 'user_online_log')
 
 
 def _ensure_required_tables(conn):
@@ -839,6 +929,19 @@ def _ensure_required_tables(conn):
             '  last_seen REAL NOT NULL,'
             "  ip TEXT NOT NULL DEFAULT '',"
             '  PRIMARY KEY (user_id, sid)'
+            ');')
+        conn.commit()
+    if 'user_online_log' not in have:
+        # история времени пользователей в сети (отчёт Администратора, v1.6.4)
+        conn.executescript(
+            'CREATE TABLE IF NOT EXISTS user_online_log ('
+            '  id INTEGER PRIMARY KEY AUTOINCREMENT,'
+            '  user_id INTEGER NOT NULL,'
+            "  sid TEXT NOT NULL DEFAULT '',"
+            '  day TEXT NOT NULL,'
+            '  login_ts REAL NOT NULL,'
+            '  logout_ts REAL NOT NULL,'
+            "  ip TEXT NOT NULL DEFAULT ''"
             ');')
         conn.commit()
 
@@ -1101,6 +1204,8 @@ def logout():
     audit('ВЫХОД ИЗ СИСТЕМЫ')
     if uid:  # убираем пользователя из реестра активных сессий
         drop_active_session(uid, _session_signature(uid))
+        # фиксируем окончание времени в сети (отчёт Администратора, v1.6.4)
+        online_close_session(uid, _session_signature(uid))
     session.clear()
     return redirect(url_for('login'))
 
@@ -2744,6 +2849,156 @@ def report_journal_print():
                            headers=headers, rows=data, total=len(data),
                            base_url=url_for('report_journal_print'),
                            extra_args={'journal': journal})
+
+
+# ---------------------------------------------------------------------------
+# Отчёт «⏱ Время в сети» (v1.6.4) — доступен ТОЛЬКО Администратору.
+# Источник данных — таблица user_online_log: интервалы присутствия сотрудников,
+# которые «склеиваются» из HTTP-запросов (см. online_track_touch).
+# ---------------------------------------------------------------------------
+
+def _fmt_duration(seconds):
+    """Секунды → «1 ч 05 мин» / «42 мин» / «30 с»."""
+    s = int(round(seconds or 0))
+    if s < 60:
+        return f'{s} с'
+    h, m = divmod(s, 60)
+    if h:
+        return f'{h} ч {m:02d} мин'
+    return f'{m} мин'
+
+
+def _online_report_rows(d1, d2):
+    """Строки отчёта о времени в сети за период [d1; d2].
+
+    Возвращает (per_user, per_day):
+      per_user — по каждому сотруднику: ФИО, роль, суммарное время,
+                 число входов, первый вход и последний выход за период;
+      per_day  — разбивка «сотрудник × день» для детальной таблицы.
+    Интервал, начатый в один день и закрытый в другой, относится к дню начала.
+    """
+    conn = get_db()
+    rows = conn.execute(
+        'SELECT l.user_id, e.full_name, r.name AS role_name, '
+        '       l.day, l.login_ts, l.logout_ts, l.ip '
+        'FROM user_online_log l '
+        'JOIN employees e ON e.id = l.user_id '
+        'LEFT JOIN roles r ON r.id = e.role_id '
+        'WHERE l.day >= ? AND l.day <= ? '
+        'ORDER BY e.full_name, l.login_ts', (d1, d2)).fetchall()
+    conn.close()
+    now = time.time()
+    per_user = {}
+    per_day = {}
+    for r in rows:
+        # незакрытый «живой» интервал (пользователь сейчас в сети): считаем
+        # длительность до текущей активности, но не больше ONLINE_GAP+задержки
+        end = r['logout_ts']
+        dur = max(0.0, min(end, now) - r['login_ts'])
+        u = per_user.setdefault(r['user_id'], {
+            'full_name': r['full_name'], 'role': r['role_name'] or '—',
+            'seconds': 0.0, 'entries': 0, 'first': None, 'last': None})
+        u['seconds'] += dur
+        u['entries'] += 1
+        if u['first'] is None or r['login_ts'] < u['first']:
+            u['first'] = r['login_ts']
+        if u['last'] is None or end > u['last']:
+            u['last'] = end
+        d = per_day.setdefault((r['user_id'], r['day']), {
+            'full_name': r['full_name'], 'day': r['day'],
+            'seconds': 0.0, 'entries': 0, 'first': None, 'last': None})
+        d['seconds'] += dur
+        d['entries'] += 1
+        if d['first'] is None or r['login_ts'] < d['first']:
+            d['first'] = r['login_ts']
+        if d['last'] is None or end > d['last']:
+            d['last'] = end
+    return per_user, per_day
+
+
+@app.route('/reports/online_time')
+def report_online_time():
+    """Отчёт «Время пользователей в сети» — только Администратор."""
+    user = current_user()
+    if not is_admin(user):
+        abort(403)
+    d1, d2 = _report_period()
+    online_purge_old()  # фоновая очистка старой истории (хранится 365 дней)
+    per_user, per_day = _online_report_rows(d1, d2)
+    fmt = request.args.get('fmt')
+    detail = request.args.get('detail') == '1'
+
+    def ts_str(ts):
+        return datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S') if ts else ''
+
+    if detail:
+        headers = ('ФИО', 'Дата', 'Первый вход', 'Последний выход',
+                   'Входов', 'Время в сети')
+        data = [(x['full_name'], x['day'], ts_str(x['first']),
+                 ts_str(x['last']), x['entries'], _fmt_duration(x['seconds']))
+                for x in sorted(per_day.values(),
+                                key=lambda z: (z['day'], z['full_name']))]
+        title = 'Время в сети — по дням'
+    else:
+        headers = ('ФИО', 'Роль', 'Входов', 'Первый вход', 'Последний выход',
+                   'Время в сети')
+        data = [(x['full_name'], x['role'], x['entries'], ts_str(x['first']),
+                 ts_str(x['last']), _fmt_duration(x['seconds']))
+                for x in sorted(per_user.values(),
+                                key=lambda z: -z['seconds'])]
+        title = 'Время в сети — суммарно за период'
+
+    total_txt = _fmt_duration(sum(x['seconds'] for x in per_user.values()))
+    if fmt == 'xlsx':
+        _need_xlsx()
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Время в сети'
+        ws.append([title])
+        ws.append([f'Период: с {d1} по {d2}'])
+        ws.append([])
+        ws.append(list(headers))
+        for row in data:
+            ws.append(list(row))
+        ws.append(['Итого', '', '', '', '', total_txt])
+        for cell in ws[4]:
+            cell.font = Font(bold=True)
+        ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
+        ws.cell(row=ws.max_row, column=6).font = Font(bold=True)
+        buf = io.BytesIO()
+        wb.save(buf)
+        return _mem_download(
+            buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'report_online_time.xlsx')
+    if fmt == 'docx':
+        _need_docx()
+        doc = DocxDocument()
+        sec = doc.sections[0]
+        sec.orientation = WD_ORIENT.LANDSCAPE
+        doc.add_heading(title, level=1)
+        doc.add_paragraph(f'Период: с {d1} по {d2}')
+        t = doc.add_table(rows=1, cols=len(headers))
+        t.style = 'Table Grid'
+        for i, h in enumerate(headers):
+            t.rows[0].cells[i].text = str(h)
+        for row in data:
+            cells = t.add_row().cells
+            for i, v in enumerate(row):
+                cells[i].text = str(v)
+        cells = t.add_row().cells
+        cells[0].text = 'Итого'
+        cells[len(headers) - 1].text = total_txt
+        buf = io.BytesIO()
+        doc.save(buf)
+        return _mem_download(
+            buf,
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'report_online_time.docx')
+    return render_template('report_table.html', title=title, d1=d1, d2=d2,
+                           headers=headers, rows=data, total=total_txt,
+                           base_url=url_for('report_online_time'),
+                           extra_args={'detail': '1'} if detail else None,
+                           no_total_col=True)
 
 # ============================================================================
 # REST API v1 — используется клиентским десктопным приложением (client_app.py).

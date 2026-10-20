@@ -14,5 +14,11 @@
     <div class="card-title">3. Распечатка журнала за период</div>
     <div class="card-sub">Выборка по виду приказа</div>
   </a>
+  {% if cu and cu.role_name == 'Администратор' %}
+  <a class="card" href="{{ url_for('report_online_time') }}">
+    <div class="card-title">4. ⏱ Время в сети</div>
+    <div class="card-sub">Время пользователей в сети (только Администратор)</div>
+  </a>
+  {% endif %}
 </div>
 {% endblock %}
