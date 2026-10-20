@@ -31,7 +31,14 @@
     {% else %}
     <tr><td colspan="{{ headers|length }}" class="empty">Нет данных за период</td></tr>
     {% endfor %}
-    {% if total is defined and rows %}<tr class="totalrow"><td colspan="{{ headers|length - 1 if headers|length > 2 else 1 }}"><b>Итого</b></td><td><b>{{ total }}</b></td></tr>{% endif %}
+    {% if total is defined and rows %}
+      {% if no_total_col is defined and no_total_col %}
+      {# Итог текстом в последней ячейке (напр. «1 ч 05 мин» — отчёт о времени в сети) #}
+      <tr class="totalrow"><td colspan="{{ headers|length - 1 }}"><b>Итого</b></td><td><b>{{ total }}</b></td></tr>
+      {% else %}
+      <tr class="totalrow"><td colspan="{{ headers|length - 1 if headers|length > 2 else 1 }}"><b>Итого</b></td><td><b>{{ total }}</b></td></tr>
+      {% endif %}
+    {% endif %}
   </table>
   <p class="rep-date no-sel">Отчёт сформирован: {{ now_s if now_s else '' }}</p>
 </div>

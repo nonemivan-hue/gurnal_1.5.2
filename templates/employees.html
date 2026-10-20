@@ -16,6 +16,17 @@
       <button class="btn sm" data-id="{{ r.id }}" data-fio="{{ r.full_name }}" data-pos="{{ r.position or '' }}"
               data-login="{{ r.login or '' }}" data-role="{{ r.role_name or 'Куратор' }}"
               data-haspw="{{ 1 if r.password_hash else 0 }}" onclick="editEmp(this)">✏️</button>
+      {% if cu and cu.role_name == 'Администратор' and r.login %}
+      <form method="post" action="{{ url_for('service_set_password') }}" class="pwd-form"
+            style="display:inline">
+        <input type="hidden" name="user_id" value="{{ r.id }}">
+        <input type="hidden" name="back" value="employees">
+        <input type="password" name="password" placeholder="новый пароль" minlength="4"
+               autocomplete="new-password" style="width:8.5em" required>
+        <button class="btn sm" title="Установить новый пароль (только администратор)"
+                onclick="return confirmPwd(this, '{{ r.full_name|e }}')">🔑</button>
+      </form>
+      {% endif %}
       <form method="post" action="{{ url_for('employee_delete', eid=r.id) }}" style="display:inline"
             onsubmit="return confirm('Удалить сотрудника?')"><button class="btn sm danger">🗑</button></form>
     </td>
@@ -60,6 +71,14 @@ function resetEmp(){
   document.getElementById('empFormTitle').textContent='Новый сотрудник';
   document.getElementById('pwLabel').style.display='';
   document.getElementById('pwHint').textContent='';
+}
+function confirmPwd(btn, fio){
+  const f = btn.closest('.pwd-form');
+  const p = f.querySelector('input[name=password]');
+  if (!p.value || p.value.length < 4){
+    alert('Пароль должен содержать минимум 4 символа'); p.focus(); return false;
+  }
+  return confirm('Установить новый пароль пользователю «' + fio + '»?');
 }
 </script>
 {% endblock %}

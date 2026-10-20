@@ -104,3 +104,6 @@ th.sortable .sort-ind{color:#1c3f63;font-size:11px;margin-left:4px;}
 /* Выбор разделов архива (v1.6.2) */
 .backup-sections { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
 .backup-sections label { font-weight: normal; }
+/* Формы быстрой смены пароля (страница «Пользователи», справочник «Сотрудники») */
+.pwd-form { display: inline-flex; align-items: center; gap: 4px; }
+.pwd-form input[type=password] { margin: 0; padding: 3px 6px; }

@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>👥 Пользователи</h1>
+<p class="muted">Администратор может изменить пароль любого пользователя.
+   После смены пароля сотруднику будет рекомендовано установить собственный
+   пароль самостоятельно в разделе «Моя учётная запись». Все изменения
+   фиксируются в журнале аудита.</p>
+
+<table class="grid">
+  <tr><th>ФИО</th><th>Должность</th><th>Логин</th><th>Роль</th>
+      <th>Пароль</th><th>Смена сотрудником</th><th>Действие</th></tr>
+  {% for u in users %}
+  <tr>
+    <td>{{ u.full_name }}{% if u.is_self %} <span class="muted">(это вы)</span>{% endif %}</td>
+    <td>{{ u.position or '—' }}</td>
+    <td>{{ u.login or '—' }}</td>
+    <td>{{ u.role or '—' }}</td>
+    <td>{{ '✔ задан' if u.has_password else '— (нет доступа)' }}</td>
+    <td>{{ u.pwd_changed_at or '— не менялся' }}</td>
+    <td class="actions">
+      {% if u.login %}
+      <form method="post" action="{{ url_for('service_set_password') }}"
+            class="pwd-form" id="pf-{{ u.id }}">
+        <input type="hidden" name="user_id" value="{{ u.id }}">
+        <input type="hidden" name="back" value="service_users">
+        <input type="password" name="password" placeholder="новый пароль"
+               minlength="4" autocomplete="new-password" required>
+        <button class="btn sm primary"
+                onclick="return confirmPwd(this, '{{ u.full_name|e }}')">🔑 Сменить пароль</button>
+      </form>
+      {% else %}
+      <span class="muted">нет логина</span>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+<p><a class="btn" href="{{ url_for('service') }}">← Назад в сервис</a></p>
+
+<script>
+function confirmPwd(btn, fio){
+  const f = btn.closest('.pwd-form');
+  const p = f.querySelector('input[name=password]');
+  if (!p.value || p.value.length < 4){
+    alert('Пароль должен содержать минимум 4 символа'); p.focus(); return false;
+  }
+  return confirm('Установить новый пароль пользователю «' + fio + '»?');
+}
+</script>
+{% endblock %}
